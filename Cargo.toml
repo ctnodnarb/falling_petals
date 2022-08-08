@@ -1,0 +1,20 @@
+[package]
+    name = "game"
+    version = "0.1.0"
+    edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+    # Wgpu uses an old version of the raw-window-handle crate, while the most recent version of
+    # winit uses the latest one.  As such, we have to use an older version of winit to get them to
+    # work together properly.  But wgpu has already been updated on github to use the newer version,
+    # so hopefully I can change this with the next release of wgpu?
+    winit = "0.26" 
+    wgpu = "0.13"
+    #env_logger = "0.9"
+    #log = "0.4"
+    pollster = "0.2"
+    #bytemuck = { version = "1.11", features = [ "derive" ] }
+    #anyhow = "1.0"
+    #cgmath = "0.18"
