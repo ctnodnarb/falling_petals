@@ -1,4 +1,5 @@
-pub mod graphics;
+//mod confetti;
+mod graphics;
 
 use graphics::GraphicsState;
 

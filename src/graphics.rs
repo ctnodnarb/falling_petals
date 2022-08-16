@@ -7,7 +7,7 @@ use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
 
 // TODO: temp
-const VERTICES: &[PositionColorVertex] = &[
+const COLORED_TRIANGLE_VERTICES: &[PositionColorVertex] = &[
     PositionColorVertex {
         position: [0.0, 0.5, 0.0],
         color: [1.0, 0.0, 0.0],
@@ -21,6 +21,29 @@ const VERTICES: &[PositionColorVertex] = &[
         color: [0.0, 0.0, 1.0],
     },
 ];
+const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
+    PositionColorVertex {
+        position: [-0.0868241, 0.49240386, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // A
+    PositionColorVertex {
+        position: [-0.49513406, 0.06958647, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // B
+    PositionColorVertex {
+        position: [-0.21918549, -0.44939706, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // C
+    PositionColorVertex {
+        position: [0.35966998, -0.3473291, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // D
+    PositionColorVertex {
+        position: [0.44147372, 0.2347359, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // E
+];
+const COLORED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 
 pub struct GraphicsState {
     /// The surface to render to (usually that of the window / screen)
@@ -36,8 +59,12 @@ pub struct GraphicsState {
     /// Rendering pipeline handle
     pub render_pipeline: wgpu::RenderPipeline,
 
-    /// Vertex buffer to draw a colored triangle
-    pub triangle_vertex_buffer: wgpu::Buffer,
+    /// Vertex buffer
+    pub vertex_buffer: wgpu::Buffer,
+    /// Index buffer
+    pub index_buffer: wgpu::Buffer,
+    /// Number of indices in the index buffer
+    pub n_indices: u32,
 }
 
 impl GraphicsState {
@@ -149,12 +176,25 @@ impl GraphicsState {
         //};
         //let render_pipeline = device.create_render_pipeline(&render_pipeline_descriptor);
 
-        log::debug!("Colored triangle vertex buffer setup"); //-------------------------------------
-        let triangle_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Triangle vertex buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
+        //log::debug!("Colored triangle vertex buffer setup"); //-------------------------------------
+        //let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //    label: Some("Triangle vertex buffer"),
+        //    contents: bytemuck::cast_slice(COLORED_TRIANGLE_VERTICES),
+        //    usage: wgpu::BufferUsages::VERTEX,
+        //});
+        //let n_vertices = COLORED_TRIANGLE_VERTICES.len() as u32;
+        log::debug!("Colored pentagon vertex & index buffer setup"); //-------------------------------------
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Pentagon vertex buffer"),
+            contents: bytemuck::cast_slice(COLORED_PENTAGON_VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Pentagon index buffer"),
+            contents: bytemuck::cast_slice(COLORED_PENTAGON_INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let n_indices = COLORED_PENTAGON_INDICES.len() as u32;
 
         Self {
             surface,
@@ -164,7 +204,9 @@ impl GraphicsState {
             size,
             render_pipeline,
 
-            triangle_vertex_buffer,
+            vertex_buffer,
+            index_buffer,
+            n_indices,
         }
     }
 
@@ -253,25 +295,6 @@ impl GraphicsState {
                     label: Some("Render Encoder"),
                 });
 
-        // Clear screen to blue color
-        //let render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        //    label: Some("Render Pass"),
-        //    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-        //        view: &output_texture_view,
-        //        resolve_target: None,
-        //        ops: wgpu::Operations {
-        //            load: wgpu::LoadOp::Clear(wgpu::Color {
-        //                r: 0.1,
-        //                g: 0.2,
-        //                b: 0.3,
-        //                a: 1.0,
-        //            }),
-        //            store: true,
-        //        },
-        //    })],
-        //    depth_stencil_attachment: None,
-        //});
-
         // Render colored triangle
         let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Colored triangle render pass"),
@@ -294,8 +317,10 @@ impl GraphicsState {
             depth_stencil_attachment: None,
         });
         render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
-        render_pass.draw(0..3, 0..1);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        //render_pass.draw(0..self.n_vertices, 0..1);
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.draw_indexed(0..self.n_indices, 0, 0..1);
 
         // Drop render_pass to force the end of a mutable borrow of command_encoder that was started
         // when we called command_encoder.begin_render_pass().  This is needed so we can call
