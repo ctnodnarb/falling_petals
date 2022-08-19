@@ -21,8 +21,12 @@
 
     [dependencies.image]
         version = "0.24"
-        default-features = false
-        features = ["png", "jpeg"]
+        # The tutorial says that the image crate uses rayon to speed up decoding with threads, but
+        # that WASM doesn't support threads.  So he disables this.  Since I'm not bothering with
+        # deploying in a browser currently, I'll just load the defaults instead.  Thus, I commented
+        # out the two lines below.
+        #default-features = false
+        #features = ["png", "jpeg"]
 
 [build-dependencies]
     anyhow = { version = "1.0", features = ["backtrace"] }

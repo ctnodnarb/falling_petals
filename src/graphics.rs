@@ -2,6 +2,9 @@ pub mod texture;
 pub mod vertex;
 
 //use cgmath::prelude::*;
+// Needed for image.dimensions(), but apparenly not since I no longer specify no features for the
+// image package in Cargo.toml?
+//use image::GenericImageView;
 use vertex::{PositionColorVertex, PositionTextureVertex, Vertex};
 use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
@@ -21,29 +24,56 @@ const COLORED_TRIANGLE_VERTICES: &[PositionColorVertex] = &[
         color: [0.0, 0.0, 1.0],
     },
 ];
+// CPC = colored pentagon center (offset to move it)
+const CPC: (f32, f32) = (-0.3, 0.5);
 const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
     PositionColorVertex {
-        position: [-0.0868241, 0.49240386, 0.0],
+        position: [-0.0868241 + CPC.0, 0.49240386 + CPC.1, 0.0],
         color: [0.5, 0.0, 0.5],
     }, // A
     PositionColorVertex {
-        position: [-0.49513406, 0.06958647, 0.0],
+        position: [-0.49513406 + CPC.0, 0.06958647 + CPC.1, 0.0],
         color: [0.5, 0.0, 0.5],
     }, // B
     PositionColorVertex {
-        position: [-0.21918549, -0.44939706, 0.0],
+        position: [-0.21918549 + CPC.0, -0.44939706 + CPC.1, 0.0],
         color: [0.5, 0.0, 0.5],
     }, // C
     PositionColorVertex {
-        position: [0.35966998, -0.3473291, 0.0],
+        position: [0.35966998 + CPC.0, -0.3473291 + CPC.1, 0.0],
         color: [0.5, 0.0, 0.5],
     }, // D
     PositionColorVertex {
-        position: [0.44147372, 0.2347359, 0.0],
+        position: [0.44147372 + CPC.0, 0.2347359 + CPC.1, 0.0],
         color: [0.5, 0.0, 0.5],
     }, // E
 ];
 const COLORED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+// TPC = colored pentagon center (offset to move it)
+const TPC: (f32, f32) = (0.3, 0.5);
+const TEXTURED_PENTAGON_VERTICES: &[PositionTextureVertex] = &[
+    PositionTextureVertex {
+        position: [-0.0868241 + TPC.0, 0.49240386 + TPC.1, 0.0],
+        texture_coords: [0.4131759, 0.00759614],
+    }, // A
+    PositionTextureVertex {
+        position: [-0.49513406 + TPC.0, 0.06958647 + TPC.1, 0.0],
+        texture_coords: [0.0048659444, 0.43041354],
+    }, // B
+    PositionTextureVertex {
+        position: [-0.21918549 + TPC.0, -0.44939706 + TPC.1, 0.0],
+        texture_coords: [0.28081453, 0.949397],
+    }, // C
+    PositionTextureVertex {
+        position: [0.35966998 + TPC.0, -0.3473291 + TPC.1, 0.0],
+        texture_coords: [0.85967, 0.84732914],
+    }, // D
+    PositionTextureVertex {
+        position: [0.44147372 + TPC.0, 0.2347359 + TPC.1, 0.0],
+        texture_coords: [0.9414737, 0.2652641],
+    }, // E
+];
+const TEXTURED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 
 pub struct GraphicsState {
     /// The surface to render to (usually that of the window / screen)
@@ -56,15 +86,25 @@ pub struct GraphicsState {
     pub queue: wgpu::Queue,
     /// Current size of the rendering surface
     pub size: winit::dpi::PhysicalSize<u32>,
-    /// Rendering pipeline handle
-    pub render_pipeline: wgpu::RenderPipeline,
 
-    /// Vertex buffer
-    pub vertex_buffer: wgpu::Buffer,
-    /// Index buffer
-    pub index_buffer: wgpu::Buffer,
-    /// Number of indices in the index buffer
-    pub n_indices: u32,
+    // Rendering pipeline handle
+    pub colored_vertex_pipeline: wgpu::RenderPipeline,
+    pub textured_vertex_pipeline: wgpu::RenderPipeline,
+
+    // Colored triangle
+    pub colored_triangle_vertex_buffer: wgpu::Buffer,
+    pub n_colored_triangle_vertices: u32,
+
+    // Colored pentagon
+    pub colored_pentagon_vertex_buffer: wgpu::Buffer,
+    pub colored_pentagon_index_buffer: wgpu::Buffer,
+    pub n_colored_pentagon_indices: u32,
+
+    // Textured pentagon
+    pub textured_pentagon_vertex_buffer: wgpu::Buffer,
+    pub textured_pentagon_index_buffer: wgpu::Buffer,
+    pub n_textured_pentagon_indices: u32,
+    pub bricks_texture_bind_group: wgpu::BindGroup,
 }
 
 impl GraphicsState {
@@ -105,117 +145,183 @@ impl GraphicsState {
             present_mode: wgpu::PresentMode::Fifo,
         };
 
+        log::debug!("Loading texture"); //----------------------------------------------------------
+        let bricks_texture_rgba = include_bytes!("../res/cube-diffuse.jpg");
+        let bricks_texture_rgba = image::load_from_memory(bricks_texture_rgba).unwrap();
+        let bricks_texture_rgba = bricks_texture_rgba.to_rgba8();
+        let bricks_texture_dimensions = bricks_texture_rgba.dimensions();
+        let bricks_texture_size = wgpu::Extent3d {
+            width: bricks_texture_dimensions.0,
+            height: bricks_texture_dimensions.1,
+            depth_or_array_layers: 1,
+        };
+        // Allocate the texture on the GPU side
+        let bricks_texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: bricks_texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            label: Some("bricks_texture"),
+        });
+        // Write the rgba data into the texture on the GPU side
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &bricks_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &bricks_texture_rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(4 * bricks_texture_dimensions.0),
+                rows_per_image: std::num::NonZeroU32::new(bricks_texture_dimensions.1),
+            },
+            bricks_texture_size,
+        );
+        let bricks_texture_view =
+            bricks_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        log::debug!("Texture sampler setup"); //----------------------------------------------------
+        let diffuse_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        log::debug!("Texture bind group setup"); //-------------------------------------------------
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    // Entry at binding 0 for the texture
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    // Entry at binding 1 for the sampler
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("texture_bind_group_layout"),
+            });
+        let bricks_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &&texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&bricks_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&diffuse_sampler),
+                },
+            ],
+            label: Some("bricks_texture_bind_group"),
+        });
+
         log::debug!("Render pipeline setup"); //----------------------------------------------------
-        let render_pipeline = Self::build_colored_vertex_pipeline(&device, &surface_config);
-        //let render_pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
-        //    label: Some("Render pipeline layout"),
-        //    // Layouts of the bind groups that this pipeline uses.  First entry corresponds to set 0
-        //    // in the shader, second entry to set 1, and so on.
-        //    bind_group_layouts: &[],
-        //    // Set of pus constant ranges (?) that this pipeline uses.
-        //    push_constant_ranges: &[],
-        //};
-        //let render_pipeline_layout =
-        //    device.create_pipeline_layout(&render_pipeline_layout_descriptor);
-        //let shader_source = wgpu::ShaderSource::Wgsl(include_str!("graphics/shader.wgsl").into());
-        //let shader_module_descriptor = wgpu::ShaderModuleDescriptor {
-        //    label: Some("Shader module"),
-        //    source: shader_source,
-        //};
-        //let shader_module = device.create_shader_module(shader_module_descriptor);
-        //// VertexState describes vertex processing in a rendering pipeline
-        //let vertex_state = wgpu::VertexState {
-        //    module: &shader_module,
-        //    entry_point: "vs_colored_triangle",
-        //    // The format of any vertex buffers used with this pipeline
-        //    buffers: &[PositionColorVertex::vertex_buffer_layout()],
-        //};
-        //// Describes the state of primitve assembly and rasterization in a render pipeline.
-        //let primitive_state = wgpu::PrimitiveState {
-        //    topology: wgpu::PrimitiveTopology::TriangleList,
-        //    strip_index_format: None,
-        //    front_face: wgpu::FrontFace::Ccw,
-        //    cull_mode: Some(wgpu::Face::Back),
-        //    unclipped_depth: false,
-        //    polygon_mode: wgpu::PolygonMode::Fill,
-        //    conservative: false,
-        //};
-        ////let depth_stencil_state = wgpu::DepthStencilState {
-        ////    format: texture::Texture::DEPTH_FORMAT,
-        ////    depth_write_enabled: true,
-        ////    // Draw if new value is less than existing value
-        ////    depth_compare: wgpu::CompareFunction::Less,
-        ////    stencil: wgpu::StencilState::default(),
-        ////    bias: wgpu::DepthBiasState::default(),
-        ////};
-        //let multisample_state = wgpu::MultisampleState {
-        //    count: 1,
-        //    mask: !0,
-        //    alpha_to_coverage_enabled: false,
-        //};
-        //let color_target_state = wgpu::ColorTargetState {
-        //    format: surface_config.format,
-        //    blend: Some(wgpu::BlendState::REPLACE),
-        //    // Mask that enables / disables writes to different color/alpha channels
-        //    write_mask: wgpu::ColorWrites::ALL,
-        //};
-        //let fragment_state = wgpu::FragmentState {
-        //    module: &shader_module,
-        //    entry_point: "fs_colored_triangle",
-        //    targets: &[Some(color_target_state)],
-        //};
-        //let render_pipeline_descriptor = wgpu::RenderPipelineDescriptor {
-        //    label: Some("Render pipeline"),
-        //    layout: Some(&render_pipeline_layout),
-        //    vertex: vertex_state,
-        //    primitive: primitive_state,
-        //    depth_stencil: None, //Some(depth_stencil_state),
-        //    multisample: multisample_state,
-        //    fragment: Some(fragment_state),
-        //    multiview: None,
-        //};
-        //let render_pipeline = device.create_render_pipeline(&render_pipeline_descriptor);
+        let shader_source = wgpu::ShaderSource::Wgsl(include_str!("graphics/shader.wgsl").into());
+        let shader_module_descriptor = wgpu::ShaderModuleDescriptor {
+            label: Some("Shader module"),
+            source: shader_source,
+        };
+        let shader_module = device.create_shader_module(shader_module_descriptor);
+        let colored_vertex_pipeline =
+            Self::build_colored_vertex_pipeline(&device, &surface_config, &shader_module);
+        let textured_vertex_pipeline = Self::build_textured_vertex_pipeline(
+            &device,
+            &surface_config,
+            &shader_module,
+            &texture_bind_group_layout,
+        );
 
-        //log::debug!("Colored triangle vertex buffer setup"); //-------------------------------------
-        //let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //    label: Some("Triangle vertex buffer"),
-        //    contents: bytemuck::cast_slice(COLORED_TRIANGLE_VERTICES),
-        //    usage: wgpu::BufferUsages::VERTEX,
-        //});
-        //let n_vertices = COLORED_TRIANGLE_VERTICES.len() as u32;
-        log::debug!("Colored pentagon vertex & index buffer setup"); //-------------------------------------
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Pentagon vertex buffer"),
-            contents: bytemuck::cast_slice(COLORED_PENTAGON_VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Pentagon index buffer"),
-            contents: bytemuck::cast_slice(COLORED_PENTAGON_INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-        let n_indices = COLORED_PENTAGON_INDICES.len() as u32;
+        log::debug!("Colored triangle vertex buffer setup"); //-------------------------------------
+        let colored_triangle_vertex_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Triangle vertex buffer"),
+                contents: bytemuck::cast_slice(COLORED_TRIANGLE_VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+        let n_colored_triangle_vertices = COLORED_TRIANGLE_VERTICES.len() as u32;
 
+        log::debug!("Colored pentagon vertex & index buffer setup"); //-----------------------------
+        let colored_pentagon_vertex_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Colored pentagon vertex buffer"),
+                contents: bytemuck::cast_slice(COLORED_PENTAGON_VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+        let colored_pentagon_index_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Colored pentagon index buffer"),
+                contents: bytemuck::cast_slice(COLORED_PENTAGON_INDICES),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+        let n_colored_pentagon_indices = COLORED_PENTAGON_INDICES.len() as u32;
+
+        log::debug!("Textured pentagon vertex & index buffer setup"); //-----------------------------
+        let textured_pentagon_vertex_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Textured pentagon vertex buffer"),
+                contents: bytemuck::cast_slice(TEXTURED_PENTAGON_VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+        let textured_pentagon_index_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Textured pentagon index buffer"),
+                contents: bytemuck::cast_slice(TEXTURED_PENTAGON_INDICES),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+        let n_textured_pentagon_indices = TEXTURED_PENTAGON_INDICES.len() as u32;
+
+        log::debug!("Finished graphics setup"); //--------------------------------------------------
         Self {
             surface,
             device,
             queue,
             surface_config,
             size,
-            render_pipeline,
 
-            vertex_buffer,
-            index_buffer,
-            n_indices,
+            colored_vertex_pipeline,
+            textured_vertex_pipeline,
+
+            colored_triangle_vertex_buffer,
+            n_colored_triangle_vertices,
+
+            colored_pentagon_vertex_buffer,
+            colored_pentagon_index_buffer,
+            n_colored_pentagon_indices,
+
+            textured_pentagon_vertex_buffer,
+            textured_pentagon_index_buffer,
+            n_textured_pentagon_indices,
+            bricks_texture_bind_group,
         }
     }
 
     fn build_colored_vertex_pipeline(
         device: &wgpu::Device,
         surface_config: &wgpu::SurfaceConfiguration,
+        shader_module: &wgpu::ShaderModule,
     ) -> wgpu::RenderPipeline {
         let render_pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
-            label: Some("Colored vertex pipeline"),
+            label: Some("Colored vertex pipeline layout"),
             // Layouts of the bind groups that this pipeline uses.  First entry corresponds to set 0
             // in the shader, second entry to set 1, and so on.
             bind_group_layouts: &[],
@@ -223,12 +329,6 @@ impl GraphicsState {
         };
         let render_pipeline_layout =
             device.create_pipeline_layout(&render_pipeline_layout_descriptor);
-        let shader_source = wgpu::ShaderSource::Wgsl(include_str!("graphics/shader.wgsl").into());
-        let shader_module_descriptor = wgpu::ShaderModuleDescriptor {
-            label: Some("Shader module"),
-            source: shader_source,
-        };
-        let shader_module = device.create_shader_module(shader_module_descriptor);
         // VertexState describes vertex processing in a rendering pipeline
         let vertex_state = wgpu::VertexState {
             module: &shader_module,
@@ -271,7 +371,76 @@ impl GraphicsState {
             targets: &[Some(color_target_state)],
         };
         let render_pipeline_descriptor = wgpu::RenderPipelineDescriptor {
-            label: Some("Render pipeline"),
+            label: Some("Colored vertex pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: vertex_state,
+            primitive: primitive_state,
+            depth_stencil: None, //Some(depth_stencil_state),
+            multisample: multisample_state,
+            fragment: Some(fragment_state),
+            multiview: None,
+        };
+        device.create_render_pipeline(&render_pipeline_descriptor)
+    }
+
+    fn build_textured_vertex_pipeline(
+        device: &wgpu::Device,
+        surface_config: &wgpu::SurfaceConfiguration,
+        shader_module: &wgpu::ShaderModule,
+        texture_bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> wgpu::RenderPipeline {
+        let render_pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
+            label: Some("Textured vertex pipeline layout"),
+            // Layouts of the bind groups that this pipeline uses.  First entry corresponds to set 0
+            // in the shader, second entry to set 1, and so on.
+            bind_group_layouts: &[texture_bind_group_layout],
+            push_constant_ranges: &[],
+        };
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&render_pipeline_layout_descriptor);
+        // VertexState describes vertex processing in a rendering pipeline
+        let vertex_state = wgpu::VertexState {
+            module: &shader_module,
+            entry_point: "vs_textured_vertex",
+            // The format of any vertex buffers used with this pipeline
+            buffers: &[PositionTextureVertex::vertex_buffer_layout()],
+        };
+        // Describes the state of primitve assembly and rasterization in a render pipeline.
+        let primitive_state = wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: Some(wgpu::Face::Back),
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        };
+        //let depth_stencil_state = wgpu::DepthStencilState {
+        //    format: texture::Texture::DEPTH_FORMAT,
+        //    depth_write_enabled: true,
+        //    // Draw if new value is less than existing value
+        //    depth_compare: wgpu::CompareFunction::Less,
+        //    stencil: wgpu::StencilState::default(),
+        //    bias: wgpu::DepthBiasState::default(),
+        //};
+        let multisample_state = wgpu::MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        };
+        let color_target_state = wgpu::ColorTargetState {
+            format: surface_config.format,
+            blend: Some(wgpu::BlendState::REPLACE),
+            // Mask that enables / disables writes to different color/alpha channels
+            write_mask: wgpu::ColorWrites::ALL,
+        };
+        let fragment_state = wgpu::FragmentState {
+            module: &shader_module,
+            entry_point: "fs_textured_vertex",
+            targets: &[Some(color_target_state)],
+        };
+        let render_pipeline_descriptor = wgpu::RenderPipelineDescriptor {
+            label: Some("Textured vertex pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex: vertex_state,
             primitive: primitive_state,
@@ -295,37 +464,75 @@ impl GraphicsState {
                     label: Some("Render Encoder"),
                 });
 
-        // Render colored triangle
-        let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Colored triangle render pass"),
-            color_attachments: &[
-                // This is what @location(0) in the fragment shader output targets
-                Some(wgpu::RenderPassColorAttachment {
+        // Render things with colored vertexes -----------------------------------------------------
+        let mut colored_vertex_render_pass =
+            command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Colored vertex render pass"),
+                color_attachments: &[
+                    // This is what @location(0) in the fragment shader output targets
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &output_texture_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.1,
+                                g: 0.2,
+                                b: 0.3,
+                                a: 1.0,
+                            }),
+                            store: true,
+                        },
+                    }),
+                ],
+                depth_stencil_attachment: None,
+            });
+        colored_vertex_render_pass.set_pipeline(&self.colored_vertex_pipeline);
+        // Draw colored triangle
+        colored_vertex_render_pass
+            .set_vertex_buffer(0, self.colored_triangle_vertex_buffer.slice(..));
+        colored_vertex_render_pass.draw(0..self.n_colored_triangle_vertices, 0..1);
+        // Draw colored pentagon
+        colored_vertex_render_pass
+            .set_vertex_buffer(0, self.colored_pentagon_vertex_buffer.slice(..));
+        colored_vertex_render_pass.set_index_buffer(
+            self.colored_pentagon_index_buffer.slice(..),
+            wgpu::IndexFormat::Uint16,
+        );
+        colored_vertex_render_pass.draw_indexed(0..self.n_colored_pentagon_indices, 0, 0..1);
+        // Drop render_pass to force the end of a mutable borrow of command_encoder that was started
+        // when we called command_encoder.begin_render_pass().  This is needed so we can start
+        // another render pass and/or call command_encoder.finish() to create the final command
+        // buffer to send to the queue.
+        drop(colored_vertex_render_pass);
+
+        // Render things with textured vertexes ----------------------------------------------------
+        let mut textured_vertex_render_pass =
+            command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Textured vertex render pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &output_texture_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
+                        // Don't clear since we already drew some stuff in the last pass.  Instead,
+                        // load what has already been drawn from memory.
+                        load: wgpu::LoadOp::Load,
                         store: true,
                     },
-                }),
-            ],
-            depth_stencil_attachment: None,
-        });
-        render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        //render_pass.draw(0..self.n_vertices, 0..1);
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        render_pass.draw_indexed(0..self.n_indices, 0, 0..1);
+                })],
+                depth_stencil_attachment: None,
+            });
+        textured_vertex_render_pass.set_pipeline(&self.textured_vertex_pipeline);
+        textured_vertex_render_pass.set_bind_group(0, &self.bricks_texture_bind_group, &[]);
+        textured_vertex_render_pass
+            .set_vertex_buffer(0, self.textured_pentagon_vertex_buffer.slice(..));
+        textured_vertex_render_pass.set_index_buffer(
+            self.textured_pentagon_index_buffer.slice(..),
+            wgpu::IndexFormat::Uint16,
+        );
+        textured_vertex_render_pass.draw_indexed(0..self.n_textured_pentagon_indices, 0, 0..1);
+        drop(textured_vertex_render_pass);
 
-        // Drop render_pass to force the end of a mutable borrow of command_encoder that was started
-        // when we called command_encoder.begin_render_pass().  This is needed so we can call
-        // command_encoder.finish().
-        drop(render_pass);
+        // Create the final command buffer and submit it to the queue ------------------------------
         self.queue.submit(std::iter::once(command_encoder.finish()));
         output_texture.present();
         Ok(())

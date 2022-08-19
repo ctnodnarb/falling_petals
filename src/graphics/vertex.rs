@@ -32,7 +32,7 @@ impl Vertex for PositionTextureVertex {
                 // Info for the "texture_coords" field in the PositionTextureVertex struct.
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float32x2,
-                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     // Location of this field in the corresponding struct defined in the shader
                     // code (the @location value for the corresponding field).  In this case, the
                     // texture_coords field has @location(1) in the wgsl code.
