@@ -6,6 +6,7 @@ pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
+    pub sampler_label: Option<String>,
 }
 
 impl Texture {
@@ -14,7 +15,7 @@ impl Texture {
     pub fn create_depth_buffer_texture(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
-        label: &str,
+        label: Option<&str>,
     ) -> Self {
         let size = wgpu::Extent3d {
             width: config.width,
@@ -22,7 +23,7 @@ impl Texture {
             depth_or_array_layers: 1,
         };
         let texture_descriptor = wgpu::TextureDescriptor {
-            label: Some(label),
+            label,
             size,
             mip_level_count: 1,
             sample_count: 1,
@@ -41,7 +42,15 @@ impl Texture {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         // Generate a sampler to fill that field in our struct and in case we ever want to sample
         // the depth texture for some reason.  Often don't really NEED this though.
+        let sampler_label = match label {
+            None => None,
+            Some(texture_label) => Some(format!("{} sampler", texture_label)),
+        };
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: match sampler_label{
+                None => None,
+                Some(ref sampler_label) => Some(&sampler_label),
+            },
             // For texture coords outside the range, use the closest texture color on the edge of the texture
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -58,7 +67,7 @@ impl Texture {
             lod_max_clamp: 100.0,
             ..Default::default()
         });
-        Self {texture, view, sampler}
+        Self {texture, view, sampler, sampler_label}
     }
 
     pub fn from_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &image::DynamicImage, label: Option<&str>) -> Result<Self> {
@@ -82,10 +91,10 @@ impl Texture {
         queue.write_texture(
             // Tell wgpu where and how to copy the texture data
             wgpu::ImageCopyTexture {
-                aspect: wgpu::TextureAspect::All,
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
             },
             // The actual image data to copy into the texture
             &rgba_image,
@@ -99,7 +108,17 @@ impl Texture {
         );
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let sampler_label = match label {
+                None => None,
+                Some(texture_label) => Some(format!("{} sampler", texture_label)),
+            };
+
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: match sampler_label {
+                None => None,
+                Some(ref sampler_label) => Some(sampler_label),
+            },
             // How to handle texture coords outside the range of the texture
             address_mode_u: wgpu::AddressMode:: ClampToEdge,
             address_mode_v: wgpu::AddressMode:: ClampToEdge,
@@ -111,12 +130,12 @@ impl Texture {
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
-        Ok(Self { texture, view, sampler })
+        Ok(Self { texture, view, sampler, sampler_label: sampler_label })
     }
 
-    pub fn from_bytes(device: &wgpu::Device, queue: &wgpu::Queue, bytes: &[u8], label: &str) -> Result<Self> {
+    pub fn from_bytes(device: &wgpu::Device, queue: &wgpu::Queue, bytes: &[u8], label: Option<&str>) -> Result<Self> {
         let img = image::load_from_memory(bytes)?;
-        Self::from_image(device, queue, &img, Some(label))
+        Self::from_image(device, queue, &img, label)
     }
 
     //pub fn from_mandelbrot(device: &wgpu::Device, queue: &wgpu::Queue, size: u32, label: &str) -> Self {

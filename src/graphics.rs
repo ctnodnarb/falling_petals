@@ -5,6 +5,7 @@ pub mod vertex;
 // Needed for image.dimensions(), but apparenly not since I no longer specify no features for the
 // image package in Cargo.toml?
 //use image::GenericImageView;
+use texture::Texture;
 use vertex::{PositionColorVertex, PositionTextureVertex, Vertex};
 use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
@@ -148,52 +149,13 @@ impl GraphicsState {
         log::debug!("Loading texture"); //----------------------------------------------------------
         let bricks_texture_rgba = include_bytes!("../res/cube-diffuse.jpg");
         let bricks_texture_rgba = image::load_from_memory(bricks_texture_rgba).unwrap();
-        let bricks_texture_rgba = bricks_texture_rgba.to_rgba8();
-        let bricks_texture_dimensions = bricks_texture_rgba.dimensions();
-        let bricks_texture_size = wgpu::Extent3d {
-            width: bricks_texture_dimensions.0,
-            height: bricks_texture_dimensions.1,
-            depth_or_array_layers: 1,
-        };
-        // Allocate the texture on the GPU side
-        let bricks_texture = device.create_texture(&wgpu::TextureDescriptor {
-            size: bricks_texture_size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            label: Some("bricks_texture"),
-        });
-        // Write the rgba data into the texture on the GPU side
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &bricks_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
+        let bricks_texture = Texture::from_image(
+            &device,
+            &queue,
             &bricks_texture_rgba,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * bricks_texture_dimensions.0),
-                rows_per_image: std::num::NonZeroU32::new(bricks_texture_dimensions.1),
-            },
-            bricks_texture_size,
-        );
-        let bricks_texture_view =
-            bricks_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        log::debug!("Texture sampler setup"); //----------------------------------------------------
-        let diffuse_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
+            Some("Bricks texture"),
+        )
+        .unwrap();
 
         log::debug!("Texture bind group setup"); //-------------------------------------------------
         let texture_bind_group_layout =
@@ -221,15 +183,15 @@ impl GraphicsState {
                 label: Some("texture_bind_group_layout"),
             });
         let bricks_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &&texture_bind_group_layout,
+            layout: &texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&bricks_texture_view),
+                    resource: wgpu::BindingResource::TextureView(&bricks_texture.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_sampler),
+                    resource: wgpu::BindingResource::Sampler(&bricks_texture.sampler),
                 },
             ],
             label: Some("bricks_texture_bind_group"),
