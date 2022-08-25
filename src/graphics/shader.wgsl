@@ -51,10 +51,24 @@ struct PositionTextureVertexOutput {
     @location(0) texture_coords: vec2<f32>,
 };
 
+struct Matrix4Uniform {
+    matrix4: mat4x4<f32>,
+};
+
+// Define uniforms passed in through the bind group.  Note that shaders that do not access these 
+// uniform variables should not need the bind group with them to be present (I think).  If I
+// understand correctly, these bindings will only apply to shaders where the variable with that
+// specified binding is used (anywhere in the shader's function heirarchy).
+@group(0) @binding(0)
+var<uniform> color_pipeline_camera: Matrix4Uniform;
+@group(1) @binding(0)
+var<uniform> texture_pipeline_camera: Matrix4Uniform;
+
 @vertex
 fn vs_colored_vertex(vertex_in: PositionColorVertexInput) -> PositionColorVertexOutput {
     var out: PositionColorVertexOutput;
-    out.clip_position = vec4(vertex_in.position, 1.0);
+    out.clip_position = color_pipeline_camera.matrix4 * vec4(vertex_in.position, 1.0);
+    //out.clip_position = vec4(vertex_in.position, 1.0);
     out.color = vertex_in.color;
     return out;
 }
@@ -63,7 +77,8 @@ fn vs_colored_vertex(vertex_in: PositionColorVertexInput) -> PositionColorVertex
 fn vs_textured_vertex(model: PositionTextureVertexInput) -> PositionTextureVertexOutput{
     var out: PositionTextureVertexOutput;
     out.texture_coords = model.texture_coords;
-    out.clip_position = vec4<f32>(model.position, 1.0);
+    out.clip_position = texture_pipeline_camera.matrix4 * vec4<f32>(model.position, 1.0);
+    //out.clip_position = vec4<f32>(model.position, 1.0);
     return out;
 }
 

@@ -1,3 +1,4 @@
+pub mod camera;
 pub mod texture;
 pub mod vertex;
 
@@ -5,10 +6,16 @@ pub mod vertex;
 // Needed for image.dimensions(), but apparenly not since I no longer specify no features for the
 // image package in Cargo.toml?
 //use image::GenericImageView;
+use camera::UprightPerspectiveCamera;
+use cgmath::prelude::*;
 use texture::Texture;
 use vertex::{PositionColorVertex, PositionTextureVertex, Vertex};
 use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
+
+// TODO: remove these use statements once I am no longer handling events inside the GraphicsState
+// object.
+use winit::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 // TODO: temp
 const COLORED_TRIANGLE_VERTICES: &[PositionColorVertex] = &[
@@ -88,6 +95,12 @@ pub struct GraphicsState {
     /// Current size of the rendering surface
     pub size: winit::dpi::PhysicalSize<u32>,
 
+    // Object to control the camera and construct the view/projection matrix.
+    pub camera: UprightPerspectiveCamera,
+    pub camera_uniform: Matrix4Uniform,
+    pub camera_buffer: wgpu::Buffer,
+    pub camera_bind_group: wgpu::BindGroup,
+
     // Rendering pipeline handle
     pub colored_vertex_pipeline: wgpu::RenderPipeline,
     pub textured_vertex_pipeline: wgpu::RenderPipeline,
@@ -145,6 +158,61 @@ impl GraphicsState {
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
         };
+
+        log::debug!("Camera setup"); //-------------------------------------------------------------
+        let camera = UprightPerspectiveCamera::new(
+            // Place the camera out a ways on the +z axis (out of the screen according to NDCs) so
+            // it can view objects placed around the origin when looking in the -z direction.  This
+            // way we should have a similar view of things that we orignally rendered directly in
+            // NDCs without having to change their coordinates.
+            cgmath::Point3::<f32>::new(0.0, 0.0, 10.0),
+            // Turn the camera 90 degrees to the left (ccw around the y axis pointing up) to face in
+            // the -z direction, thus matching normalized device coordinates.  Note that the camera
+            // is defined such that pan and tilt angles of 0 mean the camera is pointing the same
+            // direction as the +x axis.
+            cgmath::Rad::<f32>::turn_div_4(),
+            cgmath::Rad::<f32>(0.0),
+            cgmath::Rad::<f32>::from(cgmath::Deg::<f32>(60.0)),
+            surface_config.width as f32 / surface_config.height as f32,
+            0.1,
+            100.0,
+        );
+
+        log::debug!("Uniform buffer (for view/projection matrix) setup"); //------------------------
+        let camera_uniform: [[f32; 4]; 4] = camera.get_view_projection_matrix().into();
+        let camera_uniform: Matrix4Uniform = camera_uniform.into();
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera uniform buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        log::debug!("Camera bind group setup"); //--------------------------------------------------
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Camera bind group layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    // Put the view-projection matrix at binding 0 (location within the bind group).
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        // Indicates whether this buffer will change size or not.  Can be useful if
+                        // we want to store an array of things in our uniform buffer.
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Camera bind group"),
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+        });
 
         log::debug!("Loading texture"); //----------------------------------------------------------
         let bricks_texture_rgba = include_bytes!("../res/cube-diffuse.jpg");
@@ -204,13 +272,18 @@ impl GraphicsState {
             source: shader_source,
         };
         let shader_module = device.create_shader_module(shader_module_descriptor);
-        let colored_vertex_pipeline =
-            Self::build_colored_vertex_pipeline(&device, &surface_config, &shader_module);
+        let colored_vertex_pipeline = Self::build_colored_vertex_pipeline(
+            &device,
+            &surface_config,
+            &shader_module,
+            &camera_bind_group_layout,
+        );
         let textured_vertex_pipeline = Self::build_textured_vertex_pipeline(
             &device,
             &surface_config,
             &shader_module,
             &texture_bind_group_layout,
+            &camera_bind_group_layout,
         );
 
         log::debug!("Colored triangle vertex buffer setup"); //-------------------------------------
@@ -260,6 +333,11 @@ impl GraphicsState {
             surface_config,
             size,
 
+            camera,
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
+
             colored_vertex_pipeline,
             textured_vertex_pipeline,
 
@@ -277,16 +355,54 @@ impl GraphicsState {
         }
     }
 
+    /// Handles the passed event if possible, and returns a boolean value indicating if the event
+    /// was handled or not.
+    pub fn handle_event(&mut self, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::KeyboardInput {
+                input:
+                    KeyboardInput {
+                        state,
+                        virtual_keycode: Some(keycode),
+                        ..
+                    },
+                ..
+            } => match keycode {
+                VirtualKeyCode::W | VirtualKeyCode::Up => {
+                    self.camera.move_relative_to_pan_angle(0.2, 0.0, 0.0);
+                    true
+                }
+                VirtualKeyCode::A | VirtualKeyCode::Down => {
+                    self.camera.move_relative_to_pan_angle(-0.2, 0.0, 0.0);
+                    true
+                }
+                VirtualKeyCode::S | VirtualKeyCode::Left => {
+                    self.camera
+                        .pan_and_tilt(cgmath::Rad::<f32>(0.1), cgmath::Rad::<f32>(0.0));
+                    true
+                }
+                VirtualKeyCode::D | VirtualKeyCode::Right => {
+                    self.camera
+                        .pan_and_tilt(cgmath::Rad::<f32>(-0.1), cgmath::Rad::<f32>(0.0));
+                    true
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     fn build_colored_vertex_pipeline(
         device: &wgpu::Device,
         surface_config: &wgpu::SurfaceConfiguration,
         shader_module: &wgpu::ShaderModule,
+        camera_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> wgpu::RenderPipeline {
         let render_pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
             label: Some("Colored vertex pipeline layout"),
             // Layouts of the bind groups that this pipeline uses.  First entry corresponds to set 0
             // in the shader, second entry to set 1, and so on.
-            bind_group_layouts: &[],
+            bind_group_layouts: &[camera_bind_group_layout],
             push_constant_ranges: &[],
         };
         let render_pipeline_layout =
@@ -350,12 +466,13 @@ impl GraphicsState {
         surface_config: &wgpu::SurfaceConfiguration,
         shader_module: &wgpu::ShaderModule,
         texture_bind_group_layout: &wgpu::BindGroupLayout,
+        camera_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> wgpu::RenderPipeline {
         let render_pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
             label: Some("Textured vertex pipeline layout"),
             // Layouts of the bind groups that this pipeline uses.  First entry corresponds to set 0
             // in the shader, second entry to set 1, and so on.
-            bind_group_layouts: &[texture_bind_group_layout],
+            bind_group_layouts: &[texture_bind_group_layout, camera_bind_group_layout],
             push_constant_ranges: &[],
         };
         let render_pipeline_layout =
@@ -449,6 +566,7 @@ impl GraphicsState {
                 depth_stencil_attachment: None,
             });
         colored_vertex_render_pass.set_pipeline(&self.colored_vertex_pipeline);
+        colored_vertex_render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
         // Draw colored triangle
         colored_vertex_render_pass
             .set_vertex_buffer(0, self.colored_triangle_vertex_buffer.slice(..));
@@ -485,6 +603,7 @@ impl GraphicsState {
             });
         textured_vertex_render_pass.set_pipeline(&self.textured_vertex_pipeline);
         textured_vertex_render_pass.set_bind_group(0, &self.bricks_texture_bind_group, &[]);
+        textured_vertex_render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
         textured_vertex_render_pass
             .set_vertex_buffer(0, self.textured_pentagon_vertex_buffer.slice(..));
         textured_vertex_render_pass.set_index_buffer(
@@ -500,6 +619,24 @@ impl GraphicsState {
         Ok(())
     }
 
+    pub fn update(&mut self) {
+        // TODO: The below, 2-step code to convert the view/projection matrix into the camera
+        // uniform works.  But I think there should be a way to do this in one step (with only one
+        // into() call that converts directly from the cgmath matrix to the camera uniform).  I
+        // tried implementing the From trait to enable that (see commented out code at the bottom of
+        // this file), but I was getting compiler errors from it that I wasn't sure how to resolve.
+        let camera_uniform_mat: [[f32; 4]; 4] = self.camera.get_view_projection_matrix().into();
+        self.camera_uniform = camera_uniform_mat.into();
+        // TODO: The below is the 3rd option of the 3 listed at the end of this page:
+        // https://sotrh.github.io/learn-wgpu/beginner/tutorial6-uniforms/#a-controller-for-our-camera
+        // I should probably look into switching it to option 1 (using a staging buffer).
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+    }
+
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         log::debug!("Resizing to {:?}", new_size);
         if new_size.width > 0 && new_size.height > 0 {
@@ -510,3 +647,36 @@ impl GraphicsState {
         }
     }
 }
+
+/// Struct to store 4x4 matrices in a format that is compatible with being put in buffers sent to
+/// the GPU.
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Matrix4Uniform {
+    matrix: [[f32; 4]; 4],
+}
+
+// TODO: Maybe this should be named Matrix4Gpu instead since I think it should be usable for putting
+// 4d matrix data into any Gpu buffer (not just uniform buffers)?
+impl Matrix4Uniform {
+    fn new() -> Self {
+        Self {
+            matrix: cgmath::Matrix4::identity().into(),
+        }
+    }
+}
+
+impl From<[[f32; 4]; 4]> for Matrix4Uniform {
+    fn from(matrix: [[f32; 4]; 4]) -> Self {
+        Matrix4Uniform { matrix }
+    }
+}
+
+// TODO: Trying to do this gives an error about cgmath::Matrix4<f32> being an unsized type.  I'm not
+// sure why that's the case / why this is a problem for implementing the From trait.
+//impl From<[cgmath::Matrix4<f32>]> for Matrix4Uniform {
+//    fn from(matrix: [cgmath::Matrix4<f32>]) -> Self {
+//        let matrix: [[f32; 4]; 4] = matrix.into();
+//        matrix.into()
+//    }
+//}

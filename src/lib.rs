@@ -25,27 +25,36 @@ pub async fn run() {
             Event::WindowEvent {
                 window_id,
                 ref event,
-            } if window_id == window.id() => match event {
-                WindowEvent::CloseRequested
-                | WindowEvent::KeyboardInput {
-                    input:
-                        KeyboardInput {
-                            state: ElementState::Pressed,
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
+            } if window_id == window.id() => {
+                // TODO: I should move event handling out of graphics_state and into a game_state
+                // object instead (the game_state object would probably contain the graphics_state
+                // object).
+                if !graphics_state.handle_event(event) {
+                    match event {
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                                    ..
+                                },
                             ..
-                        },
-                    ..
-                } => *control_flow = ControlFlow::Exit,
-                WindowEvent::Resized(physical_size) => {
-                    graphics_state.resize(*physical_size);
+                        } => *control_flow = ControlFlow::Exit,
+                        WindowEvent::Resized(physical_size) => {
+                            graphics_state.resize(*physical_size);
+                        }
+                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                            graphics_state.resize(**new_inner_size);
+                        }
+                        _ => {}
+                    }
                 }
-                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                    graphics_state.resize(**new_inner_size);
-                }
-                _ => {}
-            },
+            }
             Event::MainEventsCleared => {
                 // Application update code goes here
+                // Update buffers with any new data from the game state.
+                graphics_state.update();
 
                 // Continually request redraws by calling request_redraw() in response to this
                 // event.  Or could just render here instead for things like games that are

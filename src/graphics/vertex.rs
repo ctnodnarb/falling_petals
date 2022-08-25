@@ -1,5 +1,8 @@
+/// Trait for objects that can be used as vertices in wgpu.  Defines an associated function that
+/// returns an object describing the memory layout of the vertex attiributes.
 pub trait Vertex {
-    /// Returns a wgpu::VertexBufferLayout object describing the layout of this type of vertex
+    /// Returns a wgpu::VertexBufferLayout object describing the memory layout of the attributes in
+    /// this type of vertex.
     fn vertex_buffer_layout<'a>() -> wgpu::VertexBufferLayout<'a>;
 }
 
