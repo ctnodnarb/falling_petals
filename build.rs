@@ -12,8 +12,9 @@ fn main() -> Result<()> {
     let mut copy_options = CopyOptions::new();
     // Overwrite files if they already exist
     copy_options.overwrite = true;
-    let mut paths_to_copy = Vec::new();
-    paths_to_copy.push("res/");
+    let paths_to_copy = vec!["res/"];
+    //let mut paths_to_copy = Vec::new();
+    //paths_to_copy.push("res/");
     copy_items(&paths_to_copy, out_dir, &copy_options)?;
     Ok(())
 }

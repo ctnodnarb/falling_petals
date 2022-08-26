@@ -347,7 +347,7 @@ impl GraphicsState {
             device.create_pipeline_layout(&render_pipeline_layout_descriptor);
         // VertexState describes vertex processing in a rendering pipeline
         let vertex_state = wgpu::VertexState {
-            module: &shader_module,
+            module: shader_module,
             entry_point: "vs_colored_vertex",
             // The format of any vertex buffers used with this pipeline
             buffers: &[PositionColorVertex::vertex_buffer_layout()],
@@ -382,7 +382,7 @@ impl GraphicsState {
             write_mask: wgpu::ColorWrites::ALL,
         };
         let fragment_state = wgpu::FragmentState {
-            module: &shader_module,
+            module: shader_module,
             entry_point: "fs_colored_vertex",
             targets: &[Some(color_target_state)],
         };
@@ -417,7 +417,7 @@ impl GraphicsState {
             device.create_pipeline_layout(&render_pipeline_layout_descriptor);
         // VertexState describes vertex processing in a rendering pipeline
         let vertex_state = wgpu::VertexState {
-            module: &shader_module,
+            module: shader_module,
             entry_point: "vs_textured_vertex",
             // The format of any vertex buffers used with this pipeline
             buffers: &[PositionTextureVertex::vertex_buffer_layout()],
@@ -452,7 +452,7 @@ impl GraphicsState {
             write_mask: wgpu::ColorWrites::ALL,
         };
         let fragment_state = wgpu::FragmentState {
-            module: &shader_module,
+            module: shader_module,
             entry_point: "fs_textured_vertex",
             targets: &[Some(color_target_state)],
         };

@@ -1,9 +1,7 @@
-//mod confetti;
-mod game_state;
+mod game;
 mod graphics;
 
-use game_state::GameState;
-//use graphics::GraphicsState;
+use game::GameState;
 
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},

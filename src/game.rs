@@ -1,3 +1,5 @@
+mod controller;
+
 use crate::graphics::{camera::UprightPerspectiveCamera, GraphicsState};
 
 use cgmath::prelude::*;
@@ -11,13 +13,13 @@ pub struct GameState {
 
 impl GameState {
     pub async fn new(window: &Window) -> Self {
-        let graphics_state = GraphicsState::new(&window).await;
+        let graphics_state = GraphicsState::new(window).await;
 
-        log::debug!("Camera setup"); //-------------------------------------------------------------
-                                     // Place the camera out a ways on the +z axis (out of the screen according to NDCs) so it
-                                     // can view objects placed around the origin when looking in the -z direction.  This way we
-                                     // should have a similar view of things that we orignally rendered directly in NDCs without
-                                     // having to change their coordinates.
+        log::debug!("Camera setup");
+        // Place the camera out a ways on the +z axis (out of the screen according to NDCs) so it
+        // can view objects placed around the origin when looking in the -z direction.  This way we
+        // should have a similar view of things that we orignally rendered directly in NDCs without
+        // having to change their coordinates.
         let camera_location = cgmath::Point3::<f32>::new(0.0, 0.0, 10.0);
         // Turn the camera 90 degrees to the left (ccw around the y axis pointing up) to face in the
         // -z direction, thus matching normalized device coordinates.  Note that the camera is
