@@ -1,7 +1,9 @@
 //mod confetti;
+mod game_state;
 mod graphics;
 
-use graphics::GraphicsState;
+use game_state::GameState;
+//use graphics::GraphicsState;
 
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -16,8 +18,10 @@ pub async fn run() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
+    // Initialize the game
+    let mut game_state = GameState::new(&window).await;
     // Graphics initialization
-    let mut graphics_state = GraphicsState::new(&window).await;
+    //let mut graphics_state = GraphicsState::new(&window).await;
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {
@@ -29,7 +33,7 @@ pub async fn run() {
                 // TODO: I should move event handling out of graphics_state and into a game_state
                 // object instead (the game_state object would probably contain the graphics_state
                 // object).
-                if !graphics_state.handle_event(event) {
+                if !game_state.handle_event(event) {
                     match event {
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
@@ -41,12 +45,6 @@ pub async fn run() {
                                 },
                             ..
                         } => *control_flow = ControlFlow::Exit,
-                        WindowEvent::Resized(physical_size) => {
-                            graphics_state.resize(*physical_size);
-                        }
-                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                            graphics_state.resize(**new_inner_size);
-                        }
                         _ => {}
                     }
                 }
@@ -54,7 +52,7 @@ pub async fn run() {
             Event::MainEventsCleared => {
                 // Application update code goes here
                 // Update buffers with any new data from the game state.
-                graphics_state.update();
+                game_state.update();
 
                 // Continually request redraws by calling request_redraw() in response to this
                 // event.  Or could just render here instead for things like games that are
@@ -62,10 +60,13 @@ pub async fn run() {
                 window.request_redraw();
             }
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                match graphics_state.render() {
+                match game_state.render() {
                     Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost) => graphics_state.resize(graphics_state.size),
-                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                    Err(wgpu::SurfaceError::Lost) => game_state.reconfigure_rendering_surface(),
+                    Err(wgpu::SurfaceError::OutOfMemory) => {
+                        eprintln!("Exiting due to wgpu::SurfaceError::OutOfMemory");
+                        *control_flow = ControlFlow::Exit
+                    }
                     Err(e) => eprintln!("{:?}", e),
                 }
             }

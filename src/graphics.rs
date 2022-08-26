@@ -6,16 +6,11 @@ pub mod vertex;
 // Needed for image.dimensions(), but apparenly not since I no longer specify no features for the
 // image package in Cargo.toml?
 //use image::GenericImageView;
-use camera::UprightPerspectiveCamera;
 use cgmath::prelude::*;
 use texture::Texture;
 use vertex::{PositionColorVertex, PositionTextureVertex, Vertex};
 use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
-
-// TODO: remove these use statements once I am no longer handling events inside the GraphicsState
-// object.
-use winit::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 // TODO: temp
 const COLORED_TRIANGLE_VERTICES: &[PositionColorVertex] = &[
@@ -96,7 +91,7 @@ pub struct GraphicsState {
     pub size: winit::dpi::PhysicalSize<u32>,
 
     // Object to control the camera and construct the view/projection matrix.
-    pub camera: UprightPerspectiveCamera,
+    //pub camera: UprightPerspectiveCamera,
     pub camera_uniform: Matrix4Uniform,
     pub camera_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
@@ -159,27 +154,8 @@ impl GraphicsState {
             present_mode: wgpu::PresentMode::Fifo,
         };
 
-        log::debug!("Camera setup"); //-------------------------------------------------------------
-        let camera = UprightPerspectiveCamera::new(
-            // Place the camera out a ways on the +z axis (out of the screen according to NDCs) so
-            // it can view objects placed around the origin when looking in the -z direction.  This
-            // way we should have a similar view of things that we orignally rendered directly in
-            // NDCs without having to change their coordinates.
-            cgmath::Point3::<f32>::new(0.0, 0.0, 10.0),
-            // Turn the camera 90 degrees to the left (ccw around the y axis pointing up) to face in
-            // the -z direction, thus matching normalized device coordinates.  Note that the camera
-            // is defined such that pan and tilt angles of 0 mean the camera is pointing the same
-            // direction as the +x axis.
-            cgmath::Rad::<f32>::turn_div_4(),
-            cgmath::Rad::<f32>(0.0),
-            cgmath::Rad::<f32>::from(cgmath::Deg::<f32>(60.0)),
-            surface_config.width as f32 / surface_config.height as f32,
-            0.1,
-            100.0,
-        );
-
         log::debug!("Uniform buffer (for view/projection matrix) setup"); //------------------------
-        let camera_uniform: [[f32; 4]; 4] = camera.get_view_projection_matrix().into();
+        let camera_uniform: [[f32; 4]; 4] = cgmath::Matrix4::one().into(); //camera.get_view_projection_matrix().into();
         let camera_uniform: Matrix4Uniform = camera_uniform.into();
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera uniform buffer"),
@@ -333,7 +309,6 @@ impl GraphicsState {
             surface_config,
             size,
 
-            camera,
             camera_uniform,
             camera_buffer,
             camera_bind_group,
@@ -352,43 +327,6 @@ impl GraphicsState {
             textured_pentagon_index_buffer,
             n_textured_pentagon_indices,
             bricks_texture_bind_group,
-        }
-    }
-
-    /// Handles the passed event if possible, and returns a boolean value indicating if the event
-    /// was handled or not.
-    pub fn handle_event(&mut self, event: &WindowEvent) -> bool {
-        match event {
-            WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        state,
-                        virtual_keycode: Some(keycode),
-                        ..
-                    },
-                ..
-            } => match keycode {
-                VirtualKeyCode::W | VirtualKeyCode::Up => {
-                    self.camera.move_relative_to_pan_angle(0.2, 0.0, 0.0);
-                    true
-                }
-                VirtualKeyCode::A | VirtualKeyCode::Down => {
-                    self.camera.move_relative_to_pan_angle(-0.2, 0.0, 0.0);
-                    true
-                }
-                VirtualKeyCode::S | VirtualKeyCode::Left => {
-                    self.camera
-                        .pan_and_tilt(cgmath::Rad::<f32>(0.1), cgmath::Rad::<f32>(0.0));
-                    true
-                }
-                VirtualKeyCode::D | VirtualKeyCode::Right => {
-                    self.camera
-                        .pan_and_tilt(cgmath::Rad::<f32>(-0.1), cgmath::Rad::<f32>(0.0));
-                    true
-                }
-                _ => false,
-            },
-            _ => false,
         }
     }
 
@@ -619,14 +557,16 @@ impl GraphicsState {
         Ok(())
     }
 
-    pub fn update(&mut self) {
+    /// Update data in the GPU buffers according to the data as currently reflected in the game
+    /// state.
+    pub fn update(&mut self, camera_uniform: [[f32; 4]; 4]) {
         // TODO: The below, 2-step code to convert the view/projection matrix into the camera
         // uniform works.  But I think there should be a way to do this in one step (with only one
         // into() call that converts directly from the cgmath matrix to the camera uniform).  I
         // tried implementing the From trait to enable that (see commented out code at the bottom of
         // this file), but I was getting compiler errors from it that I wasn't sure how to resolve.
-        let camera_uniform_mat: [[f32; 4]; 4] = self.camera.get_view_projection_matrix().into();
-        self.camera_uniform = camera_uniform_mat.into();
+        //let camera_uniform_mat: [[f32; 4]; 4] = self.camera.get_view_projection_matrix().into();
+        self.camera_uniform = camera_uniform.into();
         // TODO: The below is the 3rd option of the 3 listed at the end of this page:
         // https://sotrh.github.io/learn-wgpu/beginner/tutorial6-uniforms/#a-controller-for-our-camera
         // I should probably look into switching it to option 1 (using a staging buffer).
@@ -645,6 +585,11 @@ impl GraphicsState {
             self.surface_config.height = new_size.height;
             self.surface.configure(&self.device, &self.surface_config);
         }
+    }
+
+    /// Return the width/height ratio for the rendering surface.
+    pub fn get_aspect_ratio(&self) -> f32 {
+        self.surface_config.width as f32 / self.surface_config.height as f32
     }
 }
 
