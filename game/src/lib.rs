@@ -1,7 +1,7 @@
 mod game;
 mod graphics;
 
-use game::GameState;
+use crate::game::GameState;
 
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
