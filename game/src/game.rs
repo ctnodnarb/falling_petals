@@ -4,7 +4,7 @@ use crate::game::controller::ControllerState;
 use crate::graphics::{camera::UprightPerspectiveCamera, GraphicsState};
 
 use cgmath::prelude::*;
-use cgmath::Rad;
+use cgmath::{Deg, Rad};
 use winit::event::WindowEvent;
 use winit::window::Window;
 
@@ -32,9 +32,9 @@ impl GameState {
         // -z direction, thus matching normalized device coordinates.  Note that the camera is
         // defined such that pan and tilt angles of 0 mean the camera is pointing the same direction
         // as the +x axis.
-        let camera_pan = cgmath::Rad::<f32>::turn_div_4();
-        let camera_tilt = cgmath::Rad::<f32>(0.0);
-        let camera_fov_y = cgmath::Rad::<f32>::from(cgmath::Deg::<f32>(60.0));
+        let camera_pan = Rad::<f32>(0.0); //cgmath::Rad::<f32>::turn_div_4();
+        let camera_tilt = Rad::<f32>(0.0);
+        let camera_fov_y = Rad::<f32>::from(Deg::<f32>(60.0));
         let camera_z_near = 0.1;
         let camera_z_far = 100.0;
         let camera = UprightPerspectiveCamera::new(

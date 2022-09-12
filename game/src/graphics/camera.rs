@@ -20,8 +20,8 @@ pub const CGMATH_NDC_TO_WGPU_NDC_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4:
 );
 
 /// Represents a camera that can turn side to side and look up and down, but cannot roll.  With zero
-/// rotation, the camera points along the positive x axis with the y axis as its up vector and the z
-/// axis extending to the right.
+/// rotation, the camera points along the -z axis with the x axis pointing to the right and the y
+/// axis pointing up.
 #[derive(Debug)]
 pub struct UprightPerspectiveCamera {
     /// Coordinate of the focal point of the camera.
@@ -85,10 +85,10 @@ impl UprightPerspectiveCamera {
     /// Construct a matrix representing the multiplication of the projection and view matrices.
     pub fn get_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let pan_tilt_rotation = cgmath::Quaternion::<f32>::from_angle_y(self.pan_angle)
-            * cgmath::Quaternion::<f32>::from_angle_z(self.tilt_angle);
+            * cgmath::Quaternion::<f32>::from_angle_x(self.tilt_angle);
         let view: cgmath::Matrix4<f32> = cgmath::Matrix4::look_to_rh(
             self.location,
-            pan_tilt_rotation * cgmath::Vector3::unit_x(),
+            pan_tilt_rotation * -cgmath::Vector3::unit_z(),
             pan_tilt_rotation * cgmath::Vector3::unit_y(),
         );
         let projection =
@@ -114,6 +114,6 @@ impl UprightPerspectiveCamera {
     /// Moves the camera relative to it's current pan orientation (but not relative to it's tilt).
     pub fn move_relative_to_pan_angle(&mut self, forward: f32, right: f32, up: f32) {
         let pan_rotation = cgmath::Quaternion::<f32>::from_angle_y(self.pan_angle);
-        self.location += pan_rotation * cgmath::Vector3::<f32>::new(forward, up, right);
+        self.location += pan_rotation * cgmath::Vector3::<f32>::new(right, up, -forward);
     }
 }
