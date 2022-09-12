@@ -85,7 +85,7 @@ impl UprightPerspectiveCamera {
     /// Construct a matrix representing the multiplication of the projection and view matrices.
     pub fn get_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let pan_tilt_rotation = cgmath::Quaternion::<f32>::from_angle_y(self.pan_angle)
-            * cgmath::Quaternion::<f32>::from_angle_x(self.tilt_angle);
+            * cgmath::Quaternion::<f32>::from_angle_z(self.tilt_angle);
         let view: cgmath::Matrix4<f32> = cgmath::Matrix4::look_to_rh(
             self.location,
             pan_tilt_rotation * cgmath::Vector3::unit_x(),

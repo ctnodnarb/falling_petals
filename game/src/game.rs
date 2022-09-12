@@ -1,19 +1,26 @@
-//mod controller;
+mod controller;
 
+use crate::game::controller::ControllerState;
 use crate::graphics::{camera::UprightPerspectiveCamera, GraphicsState};
 
 use cgmath::prelude::*;
-use winit::event::{KeyboardInput, VirtualKeyCode, WindowEvent};
+use cgmath::Rad;
+use winit::event::WindowEvent;
 use winit::window::Window;
+
+const MOVEMENT_SPEED: f32 = 0.01;
+const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0);
 
 pub struct GameState {
     graphics_state: GraphicsState,
+    controller_state: ControllerState,
     camera: UprightPerspectiveCamera,
 }
 
 impl GameState {
     pub async fn new(window: &Window) -> Self {
         let graphics_state = GraphicsState::new(window).await;
+        let controller_state = ControllerState::new();
 
         log::debug!("Camera setup");
         // Place the camera out a ways on the +z axis (out of the screen according to NDCs) so it
@@ -42,6 +49,7 @@ impl GameState {
 
         Self {
             graphics_state,
+            controller_state,
             camera,
         }
     }
@@ -50,35 +58,9 @@ impl GameState {
     /// was handled or not.
     pub fn handle_event(&mut self, event: &WindowEvent) -> bool {
         match event {
-            WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        state,
-                        virtual_keycode: Some(keycode),
-                        ..
-                    },
-                ..
-            } => match keycode {
-                VirtualKeyCode::W | VirtualKeyCode::Up => {
-                    self.camera.move_relative_to_pan_angle(0.2, 0.0, 0.0);
-                    true
-                }
-                VirtualKeyCode::A | VirtualKeyCode::Down => {
-                    self.camera.move_relative_to_pan_angle(-0.2, 0.0, 0.0);
-                    true
-                }
-                VirtualKeyCode::S | VirtualKeyCode::Left => {
-                    self.camera
-                        .pan_and_tilt(cgmath::Rad::<f32>(0.1), cgmath::Rad::<f32>(0.0));
-                    true
-                }
-                VirtualKeyCode::D | VirtualKeyCode::Right => {
-                    self.camera
-                        .pan_and_tilt(cgmath::Rad::<f32>(-0.1), cgmath::Rad::<f32>(0.0));
-                    true
-                }
-                _ => false,
-            },
+            WindowEvent::KeyboardInput { input, .. } => {
+                self.controller_state.handle_keyboard_event(input)
+            }
             WindowEvent::Resized(physical_size) => {
                 self.graphics_state.resize(*physical_size);
                 true
@@ -94,9 +76,23 @@ impl GameState {
     pub fn update(&mut self) {
         // Game state update code goes here.
 
+        self.update_based_on_controller_state();
+
         // Update GPU buffers according to the current game state.
         self.graphics_state
             .update(self.camera.get_view_projection_matrix().into());
+    }
+
+    fn update_based_on_controller_state(&mut self) {
+        self.camera.move_relative_to_pan_angle(
+            MOVEMENT_SPEED * self.controller_state.forward_multiplier(),
+            0.0,
+            0.0,
+        );
+        self.camera.pan_and_tilt(
+            TURN_SPEED * -self.controller_state.right_muliplier(),
+            TURN_SPEED * self.controller_state.jump_multiplier(),
+        )
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
