@@ -3,18 +3,21 @@ mod controller;
 use crate::game::controller::ControllerState;
 use crate::graphics::{camera::UprightPerspectiveCamera, GraphicsState};
 
-use cgmath::prelude::*;
+//use cgmath::prelude::*;
 use cgmath::{Deg, Rad};
-use winit::event::WindowEvent;
+use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
 use winit::window::Window;
 
 const MOVEMENT_SPEED: f32 = 0.01;
-const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0);
+const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
 
 pub struct GameState {
     graphics_state: GraphicsState,
     controller_state: ControllerState,
     camera: UprightPerspectiveCamera,
+    /// Used to enable / disable input and control whether or not the mouse is grabbed.
+    game_window_focused: bool,
+    mouse_look_enabled: bool,
 }
 
 impl GameState {
@@ -51,15 +54,43 @@ impl GameState {
             graphics_state,
             controller_state,
             camera,
+            game_window_focused: false,
+            mouse_look_enabled: true,
         }
     }
 
     /// Handles the passed event if possible, and returns a boolean value indicating if the event
     /// was handled or not.
-    pub fn handle_event(&mut self, event: &WindowEvent) -> bool {
+    pub fn handle_window_event(&mut self, event: &WindowEvent, window: &Window) -> bool {
         match event {
             WindowEvent::KeyboardInput { input, .. } => {
                 self.controller_state.handle_keyboard_event(input)
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } => {
+                self.mouse_look_enabled = !self.mouse_look_enabled;
+                if self.game_window_focused {
+                    window.set_cursor_visible(!self.mouse_look_enabled);
+                    window.set_cursor_grab(self.mouse_look_enabled).unwrap();
+                }
+                // Clear any pan / tilt that has been accumulated to avoid sudden jumps in rotation
+                // when mouse look is re-enabled.
+                self.controller_state.get_pan_tilt_delta();
+                true
+            }
+            WindowEvent::Focused(focused) => {
+                self.game_window_focused = *focused;
+                if self.mouse_look_enabled {
+                    window.set_cursor_visible(!self.game_window_focused);
+                    window.set_cursor_grab(self.game_window_focused).unwrap();
+                }
+                // Clear any pan / tilt that has been accumulated to avoid sudden jumps in rotation
+                // when focus is regained.
+                self.controller_state.get_pan_tilt_delta();
+                true
             }
             WindowEvent::Resized(physical_size) => {
                 self.graphics_state.resize(*physical_size);
@@ -73,10 +104,17 @@ impl GameState {
         }
     }
 
+    /// Handles the passed event if possible.
+    pub fn handle_device_event(&mut self, event: &DeviceEvent) {
+        self.controller_state.handle_device_event(event);
+    }
+
     pub fn update(&mut self) {
         // Game state update code goes here.
 
-        self.update_based_on_controller_state();
+        if self.game_window_focused {
+            self.update_based_on_controller_state();
+        }
 
         // Update GPU buffers according to the current game state.
         self.graphics_state
@@ -86,13 +124,14 @@ impl GameState {
     fn update_based_on_controller_state(&mut self) {
         self.camera.move_relative_to_pan_angle(
             MOVEMENT_SPEED * self.controller_state.forward_multiplier(),
-            0.0,
-            0.0,
+            MOVEMENT_SPEED * self.controller_state.right_muliplier(),
+            MOVEMENT_SPEED * self.controller_state.jump_multiplier(),
         );
-        self.camera.pan_and_tilt(
-            TURN_SPEED * -self.controller_state.right_muliplier(),
-            TURN_SPEED * self.controller_state.jump_multiplier(),
-        )
+        if self.mouse_look_enabled {
+            let (pan_delta, tilt_delta) = self.controller_state.get_pan_tilt_delta();
+            self.camera
+                .pan_and_tilt(TURN_SPEED * pan_delta, TURN_SPEED * tilt_delta)
+        }
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {

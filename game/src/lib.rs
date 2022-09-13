@@ -25,14 +25,14 @@ pub async fn run() {
     // Event loop
     event_loop.run(move |event, _, control_flow| {
         match event {
+            Event::DeviceEvent { ref event, .. } => {
+                game_state.handle_device_event(event);
+            }
             Event::WindowEvent {
                 window_id,
                 ref event,
             } if window_id == window.id() => {
-                // TODO: I should move event handling out of graphics_state and into a game_state
-                // object instead (the game_state object would probably contain the graphics_state
-                // object).
-                if !game_state.handle_event(event) {
+                if !game_state.handle_window_event(event, &window) {
                     match event {
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {

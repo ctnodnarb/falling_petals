@@ -1,4 +1,4 @@
-use winit::event::{ElementState, KeyboardInput, ScanCode};
+use winit::event::{DeviceEvent, ElementState, KeyboardInput, ScanCode};
 
 const W_SCANCODE: ScanCode = 17;
 const A_SCANCODE: ScanCode = 30;
@@ -19,6 +19,8 @@ pub struct ControllerState {
     right_pressed: bool,
     jump_pressed: bool,
     crouch_pressed: bool,
+    pan_delta: f32,
+    tilt_delta: f32,
 }
 
 impl ControllerState {
@@ -84,6 +86,22 @@ impl ControllerState {
                 _ => false,
             },
         }
+    }
+
+    pub fn handle_device_event(&mut self, event: &DeviceEvent) {
+        if let DeviceEvent::MouseMotion { delta } = event {
+            println!("MouseMotion: {:?}", delta);
+            self.pan_delta -= delta.0 as f32;
+            self.tilt_delta -= delta.1 as f32;
+        }
+    }
+
+    pub fn get_pan_tilt_delta(&mut self) -> (f32, f32) {
+        let pan_delta = self.pan_delta;
+        let tilt_delta = self.tilt_delta;
+        self.pan_delta = 0.0;
+        self.tilt_delta = 0.0;
+        (pan_delta, tilt_delta)
     }
 
     pub fn forward_multiplier(&self) -> f32 {
