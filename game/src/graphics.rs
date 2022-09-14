@@ -15,64 +15,64 @@ use winit::window::Window; // Needed for the device.create_buffer_init() functio
 // TODO: temp
 const COLORED_TRIANGLE_VERTICES: &[PositionColorVertex] = &[
     PositionColorVertex {
-        position: [0.0, 0.5, 0.0],
+        position: [0.0, 0.5, 0.1],
         color: [1.0, 0.0, 0.0],
     },
     PositionColorVertex {
-        position: [-0.5, -0.5, 0.0],
+        position: [-0.5, -0.5, 0.1],
         color: [0.0, 1.0, 0.0],
     },
     PositionColorVertex {
-        position: [0.5, -0.5, 0.0],
+        position: [0.5, -0.5, 0.1],
         color: [0.0, 0.0, 1.0],
     },
 ];
 // CPC = colored pentagon center (offset to move it)
-const CPC: (f32, f32) = (-0.3, 0.5);
+const CPC: (f32, f32, f32) = (-0.3, 0.5, 0.0);
 const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
     PositionColorVertex {
-        position: [-0.0868241 + CPC.0, 0.49240386 + CPC.1, 0.0],
+        position: [-0.0868241 + CPC.0, 0.49240386 + CPC.1, CPC.2],
         color: [0.5, 0.0, 0.5],
     }, // A
     PositionColorVertex {
-        position: [-0.49513406 + CPC.0, 0.06958647 + CPC.1, 0.0],
+        position: [-0.49513406 + CPC.0, 0.06958647 + CPC.1, CPC.2],
         color: [0.5, 0.0, 0.5],
     }, // B
     PositionColorVertex {
-        position: [-0.21918549 + CPC.0, -0.44939706 + CPC.1, 0.0],
+        position: [-0.21918549 + CPC.0, -0.44939706 + CPC.1, CPC.2],
         color: [0.5, 0.0, 0.5],
     }, // C
     PositionColorVertex {
-        position: [0.35966998 + CPC.0, -0.3473291 + CPC.1, 0.0],
+        position: [0.35966998 + CPC.0, -0.3473291 + CPC.1, CPC.2],
         color: [0.5, 0.0, 0.5],
     }, // D
     PositionColorVertex {
-        position: [0.44147372 + CPC.0, 0.2347359 + CPC.1, 0.0],
+        position: [0.44147372 + CPC.0, 0.2347359 + CPC.1, CPC.2],
         color: [0.5, 0.0, 0.5],
     }, // E
 ];
 const COLORED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 // TPC = colored pentagon center (offset to move it)
-const TPC: (f32, f32) = (0.3, 0.5);
+const TPC: (f32, f32, f32) = (0.3, 0.5, -0.1);
 const TEXTURED_PENTAGON_VERTICES: &[PositionTextureVertex] = &[
     PositionTextureVertex {
-        position: [-0.0868241 + TPC.0, 0.49240386 + TPC.1, 0.0],
+        position: [-0.0868241 + TPC.0, 0.49240386 + TPC.1, TPC.2],
         texture_coords: [0.4131759, 0.00759614],
     }, // A
     PositionTextureVertex {
-        position: [-0.49513406 + TPC.0, 0.06958647 + TPC.1, 0.0],
+        position: [-0.49513406 + TPC.0, 0.06958647 + TPC.1, TPC.2],
         texture_coords: [0.0048659444, 0.43041354],
     }, // B
     PositionTextureVertex {
-        position: [-0.21918549 + TPC.0, -0.44939706 + TPC.1, 0.0],
+        position: [-0.21918549 + TPC.0, -0.44939706 + TPC.1, TPC.2],
         texture_coords: [0.28081453, 0.949397],
     }, // C
     PositionTextureVertex {
-        position: [0.35966998 + TPC.0, -0.3473291 + TPC.1, 0.0],
+        position: [0.35966998 + TPC.0, -0.3473291 + TPC.1, TPC.2],
         texture_coords: [0.85967, 0.84732914],
     }, // D
     PositionTextureVertex {
-        position: [0.44147372 + TPC.0, 0.2347359 + TPC.1, 0.0],
+        position: [0.44147372 + TPC.0, 0.2347359 + TPC.1, TPC.2],
         texture_coords: [0.9414737, 0.2652641],
     }, // E
 ];
@@ -89,6 +89,9 @@ pub struct GraphicsState {
     pub queue: wgpu::Queue,
     /// Current size of the rendering surface
     pub size: winit::dpi::PhysicalSize<u32>,
+
+    /// Depth texture
+    pub depth_texture: Option<Texture>,
 
     // Object to control the camera and construct the view/projection matrix.
     //pub camera: UprightPerspectiveCamera,
@@ -117,12 +120,13 @@ pub struct GraphicsState {
 }
 
 impl GraphicsState {
-    pub async fn new(window: &Window) -> Self {
+    pub async fn new(window: &Window, enable_depth_buffer: bool) -> Self {
         let size = window.inner_size();
 
         log::debug!("WGPU setup"); //---------------------------------------------------------------
         let wgpu_instance = wgpu::Instance::new(wgpu::Backends::all());
         let surface = unsafe { wgpu_instance.create_surface(window) };
+        // The adapter represents the physical instance of your hardware.
         let gpu_adapter = wgpu_instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
@@ -133,6 +137,8 @@ impl GraphicsState {
             .unwrap();
 
         log::debug!("Device and queue setup"); //---------------------------------------------------
+                                               // The device represents the logical instance that you work with, and that owns all the
+                                               // resources.
         let (device, queue) = gpu_adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -146,12 +152,25 @@ impl GraphicsState {
             .unwrap();
 
         log::debug!("Surface setup"); //------------------------------------------------------------
+
+        // TODO: should I create a SwapChain here too?  Google "wgpu SwapChain".
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface.get_supported_formats(&gpu_adapter)[0],
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
+        };
+
+        log::debug!("Depth texture setup"); //------------------------------------------------------
+        let depth_texture = if enable_depth_buffer {
+            Some(texture::Texture::create_depth_buffer_texture(
+                &device,
+                &surface_config,
+                Some("depth texture"),
+            ))
+        } else {
+            None
         };
 
         log::debug!("Uniform buffer (for view/projection matrix) setup"); //------------------------
@@ -252,6 +271,7 @@ impl GraphicsState {
             &surface_config,
             &shader_module,
             &camera_bind_group_layout,
+            depth_texture.as_ref(),
         );
         let textured_vertex_pipeline = Self::build_textured_vertex_pipeline(
             &device,
@@ -259,6 +279,7 @@ impl GraphicsState {
             &shader_module,
             &texture_bind_group_layout,
             &camera_bind_group_layout,
+            depth_texture.as_ref(),
         );
 
         log::debug!("Colored triangle vertex buffer setup"); //-------------------------------------
@@ -308,6 +329,8 @@ impl GraphicsState {
             surface_config,
             size,
 
+            depth_texture,
+
             camera_uniform,
             camera_buffer,
             camera_bind_group,
@@ -334,6 +357,7 @@ impl GraphicsState {
         surface_config: &wgpu::SurfaceConfiguration,
         shader_module: &wgpu::ShaderModule,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
+        depth_texture: Option<&Texture>,
     ) -> wgpu::RenderPipeline {
         let render_pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
             label: Some("Colored vertex pipeline layout"),
@@ -361,14 +385,14 @@ impl GraphicsState {
             polygon_mode: wgpu::PolygonMode::Fill,
             conservative: false,
         };
-        //let depth_stencil_state = wgpu::DepthStencilState {
-        //    format: texture::Texture::DEPTH_FORMAT,
-        //    depth_write_enabled: true,
-        //    // Draw if new value is less than existing value
-        //    depth_compare: wgpu::CompareFunction::Less,
-        //    stencil: wgpu::StencilState::default(),
-        //    bias: wgpu::DepthBiasState::default(),
-        //};
+        let depth_stencil_state = depth_texture.map(|_depth_texture| wgpu::DepthStencilState {
+            format: texture::Texture::DEPTH_FORMAT,
+            depth_write_enabled: true,
+            // Draw if new value is less than existing value
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        });
         let multisample_state = wgpu::MultisampleState {
             count: 1,
             mask: !0,
@@ -390,7 +414,7 @@ impl GraphicsState {
             layout: Some(&render_pipeline_layout),
             vertex: vertex_state,
             primitive: primitive_state,
-            depth_stencil: None, //Some(depth_stencil_state),
+            depth_stencil: depth_stencil_state,
             multisample: multisample_state,
             fragment: Some(fragment_state),
             multiview: None,
@@ -404,6 +428,7 @@ impl GraphicsState {
         shader_module: &wgpu::ShaderModule,
         texture_bind_group_layout: &wgpu::BindGroupLayout,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
+        depth_texture: Option<&Texture>,
     ) -> wgpu::RenderPipeline {
         let render_pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
             label: Some("Textured vertex pipeline layout"),
@@ -431,14 +456,14 @@ impl GraphicsState {
             polygon_mode: wgpu::PolygonMode::Fill,
             conservative: false,
         };
-        //let depth_stencil_state = wgpu::DepthStencilState {
-        //    format: texture::Texture::DEPTH_FORMAT,
-        //    depth_write_enabled: true,
-        //    // Draw if new value is less than existing value
-        //    depth_compare: wgpu::CompareFunction::Less,
-        //    stencil: wgpu::StencilState::default(),
-        //    bias: wgpu::DepthBiasState::default(),
-        //};
+        let depth_stencil_state = depth_texture.map(|_depth_texture| wgpu::DepthStencilState {
+            format: texture::Texture::DEPTH_FORMAT,
+            depth_write_enabled: true,
+            // Draw if new value is less than existing value
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        });
         let multisample_state = wgpu::MultisampleState {
             count: 1,
             mask: !0,
@@ -460,7 +485,7 @@ impl GraphicsState {
             layout: Some(&render_pipeline_layout),
             vertex: vertex_state,
             primitive: primitive_state,
-            depth_stencil: None, //Some(depth_stencil_state),
+            depth_stencil: depth_stencil_state,
             multisample: multisample_state,
             fragment: Some(fragment_state),
             multiview: None,
@@ -500,7 +525,16 @@ impl GraphicsState {
                         },
                     }),
                 ],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: self.depth_texture.as_ref().map(|depth_texture| {
+                    wgpu::RenderPassDepthStencilAttachment {
+                        view: &depth_texture.view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: true,
+                        }),
+                        stencil_ops: None,
+                    }
+                }),
             });
         colored_vertex_render_pass.set_pipeline(&self.colored_vertex_pipeline);
         colored_vertex_render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
@@ -533,10 +567,23 @@ impl GraphicsState {
                         // Don't clear since we already drew some stuff in the last pass.  Instead,
                         // load what has already been drawn from memory.
                         load: wgpu::LoadOp::Load,
+                        // Do write new values into the depth buffer
                         store: true,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: self.depth_texture.as_ref().map(|depth_texture| {
+                    wgpu::RenderPassDepthStencilAttachment {
+                        view: &depth_texture.view,
+                        depth_ops: Some(wgpu::Operations {
+                            // Don't clear since we already drew some stuff in the last pass.  Instead,
+                            // load what has already been drawn from memory.
+                            load: wgpu::LoadOp::Load,
+                            // Do write new values into the depth buffer
+                            store: true,
+                        }),
+                        stencil_ops: None,
+                    }
+                }),
             });
         textured_vertex_render_pass.set_pipeline(&self.textured_vertex_pipeline);
         textured_vertex_render_pass.set_bind_group(0, &self.bricks_texture_bind_group, &[]);
@@ -577,6 +624,13 @@ impl GraphicsState {
             self.surface_config.width = new_size.width;
             self.surface_config.height = new_size.height;
             self.surface.configure(&self.device, &self.surface_config);
+        }
+        if self.depth_texture.is_some() {
+            self.depth_texture = Some(texture::Texture::create_depth_buffer_texture(
+                &self.device,
+                &self.surface_config,
+                Some("depth texture"),
+            ));
         }
     }
 

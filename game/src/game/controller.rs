@@ -29,7 +29,6 @@ impl ControllerState {
     }
 
     pub fn handle_keyboard_event(&mut self, input: &KeyboardInput) -> bool {
-        dbg!(input);
         match input.state {
             ElementState::Pressed => match input.scancode {
                 W_SCANCODE | UP_SCANCODE => {
@@ -90,7 +89,6 @@ impl ControllerState {
 
     pub fn handle_device_event(&mut self, event: &DeviceEvent) {
         if let DeviceEvent::MouseMotion { delta } = event {
-            println!("MouseMotion: {:?}", delta);
             self.pan_delta -= delta.0 as f32;
             self.tilt_delta -= delta.1 as f32;
         }

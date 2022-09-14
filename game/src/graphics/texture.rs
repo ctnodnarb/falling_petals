@@ -15,12 +15,12 @@ impl Texture {
 
     pub fn create_depth_buffer_texture(
         device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
+        surface_config: &wgpu::SurfaceConfiguration,
         label: Option<&str>,
     ) -> Self {
         let size = wgpu::Extent3d {
-            width: config.width,
-            height: config.height,
+            width: surface_config.width,
+            height: surface_config.height,
             depth_or_array_layers: 1,
         };
         let texture_label = label.map(String::from);
@@ -40,7 +40,8 @@ impl Texture {
                 | wgpu::TextureUsages::TEXTURE_BINDING
         };
         let texture = device.create_texture(&texture_descriptor);
-        // I'm not entirely sure what this does
+        // Create a view into the texture (they can have multiple views, e.g. a view of a single 2d
+        // slice of a 3d texture).
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         // Generate a sampler to fill that field in our struct and in case we ever want to sample
         // the depth texture for some reason.  Often don't really NEED this though.
