@@ -155,8 +155,7 @@ impl GraphicsState {
         };
 
         log::debug!("Uniform buffer (for view/projection matrix) setup"); //------------------------
-        let camera_uniform: [[f32; 4]; 4] = cgmath::Matrix4::one().into(); //camera.get_view_projection_matrix().into();
-        let camera_uniform: Matrix4Uniform = camera_uniform.into();
+        let camera_uniform: Matrix4Uniform = cgmath::Matrix4::one().into();
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera uniform buffer"),
             contents: bytemuck::cast_slice(&[camera_uniform]),
@@ -559,14 +558,8 @@ impl GraphicsState {
 
     /// Update data in the GPU buffers according to the data as currently reflected in the game
     /// state.
-    pub fn update(&mut self, camera_uniform: [[f32; 4]; 4]) {
-        // TODO: The below, 2-step code to convert the view/projection matrix into the camera
-        // uniform works.  But I think there should be a way to do this in one step (with only one
-        // into() call that converts directly from the cgmath matrix to the camera uniform).  I
-        // tried implementing the From trait to enable that (see commented out code at the bottom of
-        // this file), but I was getting compiler errors from it that I wasn't sure how to resolve.
-        //let camera_uniform_mat: [[f32; 4]; 4] = self.camera.get_view_projection_matrix().into();
-        self.camera_uniform = camera_uniform.into();
+    pub fn update(&mut self, camera_uniform: Matrix4Uniform) {
+        self.camera_uniform = camera_uniform;
         // TODO: The below is the 3rd option of the 3 listed at the end of this page:
         // https://sotrh.github.io/learn-wgpu/beginner/tutorial6-uniforms/#a-controller-for-our-camera
         // I should probably look into switching it to option 1 (using a staging buffer).
@@ -617,11 +610,9 @@ impl From<[[f32; 4]; 4]> for Matrix4Uniform {
     }
 }
 
-// TODO: Trying to do this gives an error about cgmath::Matrix4<f32> being an unsized type.  I'm not
-// sure why that's the case / why this is a problem for implementing the From trait.
-//impl From<[cgmath::Matrix4<f32>]> for Matrix4Uniform {
-//    fn from(matrix: [cgmath::Matrix4<f32>]) -> Self {
-//        let matrix: [[f32; 4]; 4] = matrix.into();
-//        matrix.into()
-//    }
-//}
+impl From<cgmath::Matrix4<f32>> for Matrix4Uniform {
+    fn from(matrix: cgmath::Matrix4<f32>) -> Self {
+        let matrix: [[f32; 4]; 4] = matrix.into();
+        matrix.into()
+    }
+}
