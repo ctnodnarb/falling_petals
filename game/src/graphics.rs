@@ -52,8 +52,8 @@ const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
     }, // E
 ];
 const COLORED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
-// TPC = colored pentagon center (offset to move it)
-const TPC: (f32, f32, f32) = (0.3, 0.5, -0.1);
+// TPC = textured pentagon center (offset to move it)
+const TPC: (f32, f32, f32) = (0.0, 0.0, 0.5); //(0.3, 0.5, 0.2);
 const TEXTURED_PENTAGON_VERTICES: &[PositionTextureVertex] = &[
     PositionTextureVertex {
         position: [-0.0868241 + TPC.0, 0.49240386 + TPC.1, TPC.2],
@@ -209,15 +209,50 @@ impl GraphicsState {
         });
 
         log::debug!("Loading texture"); //----------------------------------------------------------
-        let bricks_texture_rgba = include_bytes!("../res/cube-diffuse.jpg");
-        let bricks_texture_rgba = image::load_from_memory(bricks_texture_rgba).unwrap();
+        const TEXTURE_DIMENSION: u32 = 256;
+        //let bricks_texture_rgba: Vec<f32> = (0..TEXTURE_DIMENSION)
+        //    .flat_map(move |y| {
+        //        (0..TEXTURE_DIMENSION).flat_map(move |x| {
+        //            (0..3).map(move |c| {
+        //                if c == 0 {
+        //                    x as f32 / (TEXTURE_DIMENSION - 1) as f32
+        //                } else if c == 1 {
+        //                    y as f32 / (TEXTURE_DIMENSION - 1) as f32
+        //                } else {
+        //                    (x + y) as f32 / (TEXTURE_DIMENSION - 1) as f32 / 2.0
+        //                }
+        //            })
+        //        })
+        //    })
+        //    .collect();
+        //let bricks_texture_rgba =
+        //    image::Rgb32FImage::from_raw(TEXTURE_DIMENSION, TEXTURE_DIMENSION, bricks_texture_rgba)
+        //        .unwrap();
+        let bricks_texture_rgba =
+            image::RgbaImage::from_fn(TEXTURE_DIMENSION, TEXTURE_DIMENSION, |x, y| {
+                image::Rgba::<u8>([
+                    (x * 255 / (TEXTURE_DIMENSION - 1)) as u8,
+                    (y * 255 / (TEXTURE_DIMENSION - 1)) as u8,
+                    ((x + y) * 255 / (TEXTURE_DIMENSION - 1) / 2) as u8,
+                    ((x % (TEXTURE_DIMENSION / 8)) * 255 / (TEXTURE_DIMENSION / 8 - 1)) as u8,
+                ])
+            });
         let bricks_texture = Texture::from_image(
             &device,
             &queue,
-            &bricks_texture_rgba,
+            &bricks_texture_rgba.into(),
             Some("Bricks texture"),
         )
         .unwrap();
+        //let bricks_texture_rgba = include_bytes!("../res/cube-diffuse.jpg");
+        //let bricks_texture_rgba = image::load_from_memory(bricks_texture_rgba).unwrap();
+        //let bricks_texture = Texture::from_image(
+        //    &device,
+        //    &queue,
+        //    &bricks_texture_rgba,
+        //    Some("Bricks texture"),
+        //)
+        //.unwrap();
 
         log::debug!("Texture bind group setup"); //-------------------------------------------------
         let texture_bind_group_layout =
@@ -400,7 +435,8 @@ impl GraphicsState {
         };
         let color_target_state = wgpu::ColorTargetState {
             format: surface_config.format,
-            blend: Some(wgpu::BlendState::REPLACE),
+            //blend: Some(wgpu::BlendState::ALPHA_BLENDING), // Enable alpha blending
+            blend: Some(wgpu::BlendState::REPLACE), // No alpha blending
             // Mask that enables / disables writes to different color/alpha channels
             write_mask: wgpu::ColorWrites::ALL,
         };
@@ -471,7 +507,8 @@ impl GraphicsState {
         };
         let color_target_state = wgpu::ColorTargetState {
             format: surface_config.format,
-            blend: Some(wgpu::BlendState::REPLACE),
+            blend: Some(wgpu::BlendState::ALPHA_BLENDING), // Enable alpha blending
+            //blend: Some(wgpu::BlendState::REPLACE), // No alpha blending
             // Mask that enables / disables writes to different color/alpha channels
             write_mask: wgpu::ColorWrites::ALL,
         };
