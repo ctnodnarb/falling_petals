@@ -137,8 +137,9 @@ impl GraphicsState {
             .unwrap();
 
         log::debug!("Device and queue setup"); //---------------------------------------------------
-                                               // The device represents the logical instance that you work with, and that owns all the
-                                               // resources.
+
+        // The device represents the logical instance that you work with, and that owns all the
+        // resources.
         let (device, queue) = gpu_adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -209,34 +210,26 @@ impl GraphicsState {
         });
 
         log::debug!("Loading texture"); //----------------------------------------------------------
-        const TEXTURE_DIMENSION: u32 = 256;
-        //let bricks_texture_rgba: Vec<f32> = (0..TEXTURE_DIMENSION)
-        //    .flat_map(move |y| {
-        //        (0..TEXTURE_DIMENSION).flat_map(move |x| {
-        //            (0..3).map(move |c| {
-        //                if c == 0 {
-        //                    x as f32 / (TEXTURE_DIMENSION - 1) as f32
-        //                } else if c == 1 {
-        //                    y as f32 / (TEXTURE_DIMENSION - 1) as f32
-        //                } else {
-        //                    (x + y) as f32 / (TEXTURE_DIMENSION - 1) as f32 / 2.0
-        //                }
-        //            })
-        //        })
-        //    })
-        //    .collect();
-        //let bricks_texture_rgba =
-        //    image::Rgb32FImage::from_raw(TEXTURE_DIMENSION, TEXTURE_DIMENSION, bricks_texture_rgba)
-        //        .unwrap();
-        let bricks_texture_rgba =
-            image::RgbaImage::from_fn(TEXTURE_DIMENSION, TEXTURE_DIMENSION, |x, y| {
-                image::Rgba::<u8>([
-                    (x * 255 / (TEXTURE_DIMENSION - 1)) as u8,
-                    (y * 255 / (TEXTURE_DIMENSION - 1)) as u8,
-                    ((x + y) * 255 / (TEXTURE_DIMENSION - 1) / 2) as u8,
-                    ((x % (TEXTURE_DIMENSION / 8)) * 255 / (TEXTURE_DIMENSION / 8 - 1)) as u8,
+        const TEXTURE_DIMENSION: u32 = 1024;
+        let mut bricks_texture_rgba = image::Rgba32FImage::from_fn(
+            TEXTURE_DIMENSION,
+            TEXTURE_DIMENSION,
+            |x, y| -> image::Rgba<f32> {
+                image::Rgba::<f32>([
+                    x as f32 / (TEXTURE_DIMENSION - 1) as f32,
+                    y as f32 / (TEXTURE_DIMENSION - 1) as f32,
+                    ((x + y) as f32 / (TEXTURE_DIMENSION - 1) as f32 / 2.0) as f32,
+                    ((x % (TEXTURE_DIMENSION / 8)) as f32 / (TEXTURE_DIMENSION / 8 - 1) as f32),
                 ])
-            });
+            },
+        );
+        // Pre-multiply RGB values by their alpha values (since we're using PREMULTIPLIED_ALPHA
+        // mode).
+        for pixel in bricks_texture_rgba.pixels_mut() {
+            pixel[0] *= pixel[3];
+            pixel[1] *= pixel[3];
+            pixel[2] *= pixel[3];
+        }
         let bricks_texture = Texture::from_image(
             &device,
             &queue,
@@ -435,6 +428,9 @@ impl GraphicsState {
         };
         let color_target_state = wgpu::ColorTargetState {
             format: surface_config.format,
+            // Better alpha blending mode, but requires the color channels to be pre-multiplied by
+            // the alpha channel.
+            //blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
             //blend: Some(wgpu::BlendState::ALPHA_BLENDING), // Enable alpha blending
             blend: Some(wgpu::BlendState::REPLACE), // No alpha blending
             // Mask that enables / disables writes to different color/alpha channels
@@ -507,7 +503,10 @@ impl GraphicsState {
         };
         let color_target_state = wgpu::ColorTargetState {
             format: surface_config.format,
-            blend: Some(wgpu::BlendState::ALPHA_BLENDING), // Enable alpha blending
+            // Better alpha blending mode, but requires the color channels to be pre-multiplied by
+            // the alpha channel.
+            blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+            //blend: Some(wgpu::BlendState::ALPHA_BLENDING), // Enable alpha blending
             //blend: Some(wgpu::BlendState::REPLACE), // No alpha blending
             // Mask that enables / disables writes to different color/alpha channels
             write_mask: wgpu::ColorWrites::ALL,

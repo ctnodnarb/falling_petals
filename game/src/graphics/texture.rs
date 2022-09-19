@@ -68,6 +68,9 @@ impl Texture {
     }
 
     pub fn from_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &image::DynamicImage, label: Option<&str>) -> Result<Self> {
+        // TODO: It would probably be good to use 16 or 32 bit color instead of rgba8.  Making this
+        // change will likely require similar changes in the structures / buffers / uniforms
+        // definitions in the shader code and shader definition / setup code.
         let rgba_image = img.to_rgba8();
         let dimensions = img.dimensions();
         let size = wgpu::Extent3d {width: dimensions.0, height: dimensions.1, depth_or_array_layers: 1};
