@@ -106,17 +106,17 @@ struct PositionTextureFragmentInput {
 
 @fragment
 fn fs_colored_vertex(fragment_in: PositionColorFragmentInput) -> @location(0) vec4<f32> {
-    //return vec4<f32>(fragment_in.color, 1.0);
+    return vec4<f32>(fragment_in.color, 1.0);
     // Create a plaid look by cycling the colors based on pixel location
     // Note that "let" creates immutable variables, and "var" creates mutable ones.
-    let r_cycle = 100.0;
-    let g_cycle = 50.0;
-    let b_cycle = 125.0;
-    let pct = 0.8; // Blend in the color interpolated from the vertexes at this percentage.
-    let r = pct * fragment_in.color[0] + (1.0-pct) * (fragment_in.screen_position[1] % r_cycle / r_cycle);
-    let g = pct * fragment_in.color[1] + (1.0-pct) * (fragment_in.screen_position[0] % g_cycle / g_cycle);
-    let b = pct * fragment_in.color[2] + (1.0-pct) * (fragment_in.screen_position[0] % b_cycle / b_cycle);
-    return vec4<f32>(r, g, b, 1.0);
+    //let r_cycle = 100.0;
+    //let g_cycle = 50.0;
+    //let b_cycle = 125.0;
+    //let pct = 0.8; // Blend in the color interpolated from the vertexes at this percentage.
+    //let r = pct * fragment_in.color[0] + (1.0-pct) * (fragment_in.screen_position[1] % r_cycle / r_cycle);
+    //let g = pct * fragment_in.color[1] + (1.0-pct) * (fragment_in.screen_position[0] % g_cycle / g_cycle);
+    //let b = pct * fragment_in.color[2] + (1.0-pct) * (fragment_in.screen_position[0] % b_cycle / b_cycle);
+    //return vec4<f32>(r, g, b, 1.0);
 }
 
 // Define uniforms passed in through the bind group.  Note that shaders that do not access these 

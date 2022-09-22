@@ -1,12 +1,13 @@
 pub mod camera;
+pub mod gpu_types;
 pub mod texture;
 pub mod vertex;
 
-//use cgmath::prelude::*;
 // Needed for image.dimensions(), but apparenly not since I no longer specify no features for the
 // image package in Cargo.toml?
 //use image::GenericImageView;
 use cgmath::prelude::*;
+use noise::{NoiseFn, Seedable};
 use texture::Texture;
 use vertex::{PositionColorVertex, PositionTextureVertex, Vertex};
 use wgpu::util::DeviceExt;
@@ -95,7 +96,7 @@ pub struct GraphicsState {
 
     // Object to control the camera and construct the view/projection matrix.
     //pub camera: UprightPerspectiveCamera,
-    pub camera_uniform: Matrix4Uniform,
+    pub camera_uniform: gpu_types::Matrix4,
     pub camera_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
 
@@ -175,7 +176,7 @@ impl GraphicsState {
         };
 
         log::debug!("Uniform buffer (for view/projection matrix) setup"); //------------------------
-        let camera_uniform: Matrix4Uniform = cgmath::Matrix4::one().into();
+        let camera_uniform: gpu_types::Matrix4 = cgmath::Matrix4::one().into();
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera uniform buffer"),
             contents: bytemuck::cast_slice(&[camera_uniform]),
@@ -210,16 +211,41 @@ impl GraphicsState {
         });
 
         log::debug!("Loading texture"); //----------------------------------------------------------
+        const NOISE_COORD_SCALE: u32 = 5;
         const TEXTURE_DIMENSION: u32 = 1024;
+        let r_generator = noise::Fbm::default().set_seed(rand::random());
+        let g_generator = noise::SuperSimplex::default().set_seed(rand::random());
+        let b_generator = noise::RidgedMulti::default().set_seed(rand::random());
+        let a_generator = noise::Worley::default().set_seed(rand::random());
         let mut bricks_texture_rgba = image::Rgba32FImage::from_fn(
             TEXTURE_DIMENSION,
             TEXTURE_DIMENSION,
             |x, y| -> image::Rgba<f32> {
                 image::Rgba::<f32>([
-                    x as f32 / (TEXTURE_DIMENSION - 1) as f32,
-                    y as f32 / (TEXTURE_DIMENSION - 1) as f32,
-                    ((x + y) as f32 / (TEXTURE_DIMENSION - 1) as f32 / 2.0) as f32,
-                    ((x % (TEXTURE_DIMENSION / 8)) as f32 / (TEXTURE_DIMENSION / 8 - 1) as f32),
+                    (r_generator.get([
+                        f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
+                        f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
+                    ]) * 0.5
+                        + 0.5)
+                        .clamp(0.0, 1.0) as f32,
+                    (g_generator.get([
+                        f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
+                        f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
+                    ]) * 0.5
+                        + 0.5)
+                        .clamp(0.0, 1.0) as f32,
+                    (b_generator.get([
+                        f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
+                        f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
+                    ]) * 0.5
+                        + 0.5)
+                        .clamp(0.0, 1.0) as f32,
+                    (a_generator.get([
+                        f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
+                        f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
+                    ]) * 0.5
+                        + 0.5)
+                        .clamp(0.0, 1.0) as f32,
                 ])
             },
         );
@@ -552,9 +578,9 @@ impl GraphicsState {
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.1,
-                                g: 0.2,
-                                b: 0.3,
+                                r: 0.0, //0.1,
+                                g: 0.0, //0.2,
+                                b: 0.0, //0.3,
                                 a: 1.0,
                             }),
                             store: true,
@@ -641,7 +667,7 @@ impl GraphicsState {
 
     /// Update data in the GPU buffers according to the data as currently reflected in the game
     /// state.
-    pub fn update(&mut self, camera_uniform: Matrix4Uniform) {
+    pub fn update(&mut self, camera_uniform: gpu_types::Matrix4) {
         self.camera_uniform = camera_uniform;
         // TODO: The below is the 3rd option of the 3 listed at the end of this page:
         // https://sotrh.github.io/learn-wgpu/beginner/tutorial6-uniforms/#a-controller-for-our-camera
@@ -673,36 +699,5 @@ impl GraphicsState {
     /// Return the width/height ratio for the rendering surface.
     pub fn get_aspect_ratio(&self) -> f32 {
         self.surface_config.width as f32 / self.surface_config.height as f32
-    }
-}
-
-/// Struct to store 4x4 matrices in a format that is compatible with being put in buffers sent to
-/// the GPU.
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Matrix4Uniform {
-    matrix: [[f32; 4]; 4],
-}
-
-// TODO: Maybe this should be named Matrix4Gpu instead since I think it should be usable for putting
-// 4d matrix data into any Gpu buffer (not just uniform buffers)?
-impl Matrix4Uniform {
-    fn new() -> Self {
-        Self {
-            matrix: cgmath::Matrix4::identity().into(),
-        }
-    }
-}
-
-impl From<[[f32; 4]; 4]> for Matrix4Uniform {
-    fn from(matrix: [[f32; 4]; 4]) -> Self {
-        Matrix4Uniform { matrix }
-    }
-}
-
-impl From<cgmath::Matrix4<f32>> for Matrix4Uniform {
-    fn from(matrix: cgmath::Matrix4<f32>) -> Self {
-        let matrix: [[f32; 4]; 4] = matrix.into();
-        matrix.into()
     }
 }

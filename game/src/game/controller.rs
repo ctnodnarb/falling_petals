@@ -103,14 +103,14 @@ impl ControllerState {
     }
 
     pub fn forward_multiplier(&self) -> f32 {
-        (self.forward_pressed as i32 - self.backward_pressed as i32) as f32
+        (i32::from(self.forward_pressed) - i32::from(self.backward_pressed)) as f32
     }
 
     pub fn right_muliplier(&self) -> f32 {
-        (self.right_pressed as i32 - self.left_pressed as i32) as f32
+        (i32::from(self.right_pressed) - i32::from(self.left_pressed)) as f32
     }
 
     pub fn jump_multiplier(&self) -> f32 {
-        (self.jump_pressed as i32 - self.crouch_pressed as i32) as f32
+        (i32::from(self.jump_pressed) - i32::from(self.crouch_pressed)) as f32
     }
 }

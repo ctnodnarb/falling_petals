@@ -18,6 +18,8 @@
     bytemuck = { version = "1.11", features = [ "derive" ] }
     anyhow = { version = "1.0", features = ["backtrace"] }
     cgmath = "0.18"
+    noise = "0.7"
+    rand = "0.8"
 
     [dependencies.image]
         version = "0.24"
