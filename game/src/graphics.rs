@@ -1,15 +1,14 @@
 pub mod camera;
 pub mod gpu_types;
 pub mod texture;
-pub mod vertex;
 
 // Needed for image.dimensions(), but apparenly not since I no longer specify no features for the
 // image package in Cargo.toml?
 //use image::GenericImageView;
 use cgmath::prelude::*;
+use gpu_types::{PositionColorVertex, PositionTextureVertex, VertexBufferEntry};
 use noise::{NoiseFn, Seedable};
 use texture::Texture;
-use vertex::{PositionColorVertex, PositionTextureVertex, Vertex};
 use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
 
@@ -80,6 +79,8 @@ const TEXTURED_PENTAGON_VERTICES: &[PositionTextureVertex] = &[
 const TEXTURED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 
 pub struct GraphicsState {
+    // TODO: Go through all the members of this struct and determine if they all actually need to be
+    // public.  Make them private where appropriate.
     /// The surface to render to (usually that of the window / screen)
     pub surface: wgpu::Surface,
     /// Configuration for the rendering surface
@@ -118,6 +119,10 @@ pub struct GraphicsState {
     pub textured_pentagon_index_buffer: wgpu::Buffer,
     pub n_textured_pentagon_indices: u32,
     pub bricks_texture_bind_group: wgpu::BindGroup,
+
+    // Instanced objects
+    pub instance_poses: Vec<Pose>,
+    pub instance_pose_buffer: wgpu::Buffer,
 }
 
 impl GraphicsState {
@@ -313,6 +318,47 @@ impl GraphicsState {
             label: Some("bricks_texture_bind_group"),
         });
 
+        log::debug!("Instance setup"); //-----------------------------------------------------------
+        const NUM_INSTANCES_PER_ROW: u32 = 10;
+        const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
+            NUM_INSTANCES_PER_ROW as f32 * 0.5,
+            0.0,
+            NUM_INSTANCES_PER_ROW as f32 * 0.5,
+        );
+        let instance_poses = (0..NUM_INSTANCES_PER_ROW)
+            .flat_map(|z| {
+                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+                    let position = cgmath::Vector3 {
+                        x: x as f32,
+                        y: 0.0,
+                        z: z as f32,
+                    } - INSTANCE_DISPLACEMENT;
+
+                    let rotation = if position.is_zero() {
+                        // this is needed so an object at (0, 0, 0) won't get scaled to zero
+                        // as Quaternions can effect scale if they're not created correctly
+                        cgmath::Quaternion::from_axis_angle(
+                            cgmath::Vector3::unit_z(),
+                            cgmath::Deg(0.0),
+                        )
+                    } else {
+                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                    };
+
+                    Pose { position, rotation }
+                })
+            })
+            .collect::<Vec<_>>();
+        let instance_pose_data = instance_poses
+            .iter()
+            .map(gpu_types::Matrix4::from)
+            .collect::<Vec<_>>();
+        let instance_pose_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance pose buffer"),
+            contents: bytemuck::cast_slice(&instance_pose_data),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
         log::debug!("Render pipeline setup"); //----------------------------------------------------
         let shader_source = wgpu::ShaderSource::Wgsl(include_str!("graphics/shader.wgsl").into());
         let shader_module_descriptor = wgpu::ShaderModuleDescriptor {
@@ -403,6 +449,9 @@ impl GraphicsState {
             textured_pentagon_index_buffer,
             n_textured_pentagon_indices,
             bricks_texture_bind_group,
+
+            instance_poses,
+            instance_pose_buffer,
         }
     }
 
@@ -502,7 +551,10 @@ impl GraphicsState {
             module: shader_module,
             entry_point: "vs_textured_vertex",
             // The format of any vertex buffers used with this pipeline
-            buffers: &[PositionTextureVertex::vertex_buffer_layout()],
+            buffers: &[
+                PositionTextureVertex::vertex_buffer_layout(),
+                gpu_types::Matrix4::vertex_buffer_layout(),
+            ],
         };
         // Describes the state of primitve assembly and rasterization in a render pipeline.
         let primitive_state = wgpu::PrimitiveState {
@@ -652,11 +704,21 @@ impl GraphicsState {
         textured_vertex_render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
         textured_vertex_render_pass
             .set_vertex_buffer(0, self.textured_pentagon_vertex_buffer.slice(..));
+        //textured_vertex_render_pass.set_index_buffer(
+        //    self.textured_pentagon_index_buffer.slice(..),
+        //    wgpu::IndexFormat::Uint16,
+        //);
+        //textured_vertex_render_pass.draw_indexed(0..self.n_textured_pentagon_indices, 0, 0..1);
+        textured_vertex_render_pass.set_vertex_buffer(1, self.instance_pose_buffer.slice(..));
         textured_vertex_render_pass.set_index_buffer(
             self.textured_pentagon_index_buffer.slice(..),
             wgpu::IndexFormat::Uint16,
         );
-        textured_vertex_render_pass.draw_indexed(0..self.n_textured_pentagon_indices, 0, 0..1);
+        textured_vertex_render_pass.draw_indexed(
+            0..self.n_textured_pentagon_indices,
+            0,
+            0..self.instance_poses.len() as _,
+        );
         drop(textured_vertex_render_pass);
 
         // Create the final command buffer and submit it to the queue ------------------------------
@@ -700,4 +762,9 @@ impl GraphicsState {
     pub fn get_aspect_ratio(&self) -> f32 {
         self.surface_config.width as f32 / self.surface_config.height as f32
     }
+}
+
+pub struct Pose {
+    position: cgmath::Vector3<f32>,
+    rotation: cgmath::Quaternion<f32>,
 }
