@@ -80,10 +80,11 @@ impl From<cgmath::Matrix4<f32>> for Matrix4 {
 }
 
 impl From<&crate::graphics::Pose> for Matrix4 {
-    fn from(position_rotation: &crate::graphics::Pose) -> Self {
+    fn from(pose: &crate::graphics::Pose) -> Self {
         Matrix4 {
-            matrix: (cgmath::Matrix4::from_translation(position_rotation.position)
-                * cgmath::Matrix4::from(position_rotation.rotation))
+            matrix: (cgmath::Matrix4::from_translation(pose.position)
+                * cgmath::Matrix4::from(pose.rotation)
+                * cgmath::Matrix4::from_scale(pose.scale))
             .into(),
         }
     }
@@ -159,6 +160,54 @@ impl VertexBufferEntry for PositionColorVertex {
                     // code (the @location value for the corresponding field).  In this case, the
                     // color field has @location(1) in the wgsl code.
                     shader_location: 1,
+                },
+            ],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PositionTextureIndexVertex {
+    /// 3d position of the vertex
+    pub position: [f32; 3],
+    /// 2d texture coordinates at the vertex
+    pub texture_coords: [f32; 2],
+    /// Index associated with the vertex (e.g. to index a texture array)
+    pub index: u32,
+}
+
+impl VertexBufferEntry for PositionTextureIndexVertex {
+    fn vertex_buffer_layout<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<PositionTextureIndexVertex>() as wgpu::BufferAddress,
+            // step_mode specifies whether a vertex buffer is indexed by vertex or by instance.
+            step_mode: wgpu::VertexStepMode::Vertex,
+            // A list of the attributes within the vertex struct (assumed to be tightly packed).
+            attributes: &[
+                // Info for the "position" field
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 0,
+                    // Location of this field in the corresponding struct defined in the shader
+                    // code (the @location value for the corresponding field).  In this case, the
+                    // position field has @location(0) in the wgsl code.
+                    shader_location: 0,
+                },
+                // Info for the "texture_coords" field
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x2,
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    // Location of this field in the corresponding struct defined in the shader
+                    // code (the @location value for the corresponding field).  In this case, the
+                    // texture_coords field has @location(1) in the wgsl code.
+                    shader_location: 1,
+                },
+                // Info for the "index" field
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Uint32,
+                    offset: std::mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
+                    shader_location: 2,
                 },
             ],
         }

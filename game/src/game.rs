@@ -15,6 +15,9 @@ pub struct GameState {
     graphics_state: GraphicsState,
     controller_state: ControllerState,
     camera: UprightPerspectiveCamera,
+    petal_positions: Vec<cgmath::Vector3<f32>>,
+    petal_orientations: Vec<cgmath::Quaternion<f32>>,
+    petal_variant_indices: Vec<i32>,
     /// Used to enable / disable input and control whether or not the mouse is grabbed.
     game_window_focused: bool,
     mouse_look_enabled: bool,
@@ -50,10 +53,27 @@ impl GameState {
             camera_z_far,
         );
 
+        const N_PETALS: usize = 10;
+        let mut petal_positions = Vec::with_capacity(N_PETALS);
+        let mut petal_orientations = Vec::with_capacity(N_PETALS);
+        let mut petal_variant_indices = Vec::with_capacity(N_PETALS);
+        for _petal_idx in 0..N_PETALS {
+            petal_positions.push(cgmath::vec3(
+                2.0 * rand::random::<f32>() - 1.0,
+                2.0 * rand::random::<f32>() - 1.0,
+                2.0 * rand::random::<f32>() - 1.0,
+            ));
+            petal_orientations.push(cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0));
+            petal_variant_indices.push(0);
+        }
+
         Self {
             graphics_state,
             controller_state,
             camera,
+            petal_positions,
+            petal_orientations,
+            petal_variant_indices,
             game_window_focused: false,
             mouse_look_enabled: true,
         }

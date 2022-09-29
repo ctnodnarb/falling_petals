@@ -143,6 +143,11 @@ var sampler_diffuse: sampler;
 
 @fragment
 fn fs_textured_vertex(in: PositionTextureFragmentInput) -> @location(0) vec4<f32> {
-    return textureSample(bricks_texture_diffuse, sampler_diffuse, in.texture_coords);
+    let texture_sample = textureSample(bricks_texture_diffuse, sampler_diffuse, in.texture_coords);
+    if texture_sample[3] < 0.01{
+        discard;
+    } else {
+        return texture_sample;
+    }
     //return vec4<f32>(1.0, 0.0, 0.0, 1.0);
 }

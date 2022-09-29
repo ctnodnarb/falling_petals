@@ -129,7 +129,8 @@ impl GraphicsState {
     pub async fn new(window: &Window, enable_depth_buffer: bool) -> Self {
         let size = window.inner_size();
 
-        log::debug!("WGPU setup"); //---------------------------------------------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("WGPU setup");
         let wgpu_instance = wgpu::Instance::new(wgpu::Backends::all());
         let surface = unsafe { wgpu_instance.create_surface(window) };
         // The adapter represents the physical instance of your hardware.
@@ -142,14 +143,16 @@ impl GraphicsState {
             .await
             .unwrap();
 
-        log::debug!("Device and queue setup"); //---------------------------------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Device and queue setup");
 
         // The device represents the logical instance that you work with, and that owns all the
         // resources.
         let (device, queue) = gpu_adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    features: wgpu::Features::empty(),
+                    features: wgpu::Features::TEXTURE_BINDING_ARRAY,
+                    //features: wgpu::Features::empty(),
                     limits: wgpu::Limits::default(),
                     label: None,
                 },
@@ -158,7 +161,8 @@ impl GraphicsState {
             .await
             .unwrap();
 
-        log::debug!("Surface setup"); //------------------------------------------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Surface setup");
 
         // TODO: should I create a SwapChain here too?  Google "wgpu SwapChain".
         let surface_config = wgpu::SurfaceConfiguration {
@@ -169,7 +173,8 @@ impl GraphicsState {
             present_mode: wgpu::PresentMode::Fifo,
         };
 
-        log::debug!("Depth texture setup"); //------------------------------------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Depth texture setup");
         let depth_texture = if enable_depth_buffer {
             Some(texture::Texture::create_depth_buffer_texture(
                 &device,
@@ -180,7 +185,8 @@ impl GraphicsState {
             None
         };
 
-        log::debug!("Uniform buffer (for view/projection matrix) setup"); //------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Uniform buffer (for view/projection matrix) setup");
         let camera_uniform: gpu_types::Matrix4 = cgmath::Matrix4::one().into();
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera uniform buffer"),
@@ -188,7 +194,8 @@ impl GraphicsState {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        log::debug!("Camera bind group setup"); //--------------------------------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Camera bind group setup");
         let camera_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Camera bind group layout"),
@@ -215,59 +222,61 @@ impl GraphicsState {
             }],
         });
 
-        log::debug!("Loading texture"); //----------------------------------------------------------
-        const NOISE_COORD_SCALE: u32 = 5;
-        const TEXTURE_DIMENSION: u32 = 1024;
-        let r_generator = noise::Fbm::default().set_seed(rand::random());
-        let g_generator = noise::SuperSimplex::default().set_seed(rand::random());
-        let b_generator = noise::RidgedMulti::default().set_seed(rand::random());
-        let a_generator = noise::Worley::default().set_seed(rand::random());
-        let mut bricks_texture_rgba = image::Rgba32FImage::from_fn(
-            TEXTURE_DIMENSION,
-            TEXTURE_DIMENSION,
-            |x, y| -> image::Rgba<f32> {
-                image::Rgba::<f32>([
-                    (r_generator.get([
-                        f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
-                        f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
-                    ]) * 0.5
-                        + 0.5)
-                        .clamp(0.0, 1.0) as f32,
-                    (g_generator.get([
-                        f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
-                        f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
-                    ]) * 0.5
-                        + 0.5)
-                        .clamp(0.0, 1.0) as f32,
-                    (b_generator.get([
-                        f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
-                        f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
-                    ]) * 0.5
-                        + 0.5)
-                        .clamp(0.0, 1.0) as f32,
-                    (a_generator.get([
-                        f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
-                        f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
-                    ]) * 0.5
-                        + 0.5)
-                        .clamp(0.0, 1.0) as f32,
-                ])
-            },
-        );
-        // Pre-multiply RGB values by their alpha values (since we're using PREMULTIPLIED_ALPHA
-        // mode).
-        for pixel in bricks_texture_rgba.pixels_mut() {
-            pixel[0] *= pixel[3];
-            pixel[1] *= pixel[3];
-            pixel[2] *= pixel[3];
-        }
-        let bricks_texture = Texture::from_image(
-            &device,
-            &queue,
-            &bricks_texture_rgba.into(),
-            Some("Bricks texture"),
-        )
-        .unwrap();
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Loading textures");
+        //const NOISE_COORD_SCALE: u32 = 5;
+        //const TEXTURE_DIMENSION: u32 = 1024;
+        //let r_generator = noise::Fbm::default().set_seed(rand::random());
+        //let g_generator = noise::SuperSimplex::default().set_seed(rand::random());
+        //let b_generator = noise::RidgedMulti::default().set_seed(rand::random());
+        //let a_generator = noise::Worley::default().set_seed(rand::random());
+        //let mut procedural_texture_rgba = image::Rgba32FImage::from_fn(
+        //    TEXTURE_DIMENSION,
+        //    TEXTURE_DIMENSION,
+        //    |x, y| -> image::Rgba<f32> {
+        //        image::Rgba::<f32>([
+        //            (r_generator.get([
+        //                f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
+        //                f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
+        //            ]) * 0.5
+        //                + 0.5)
+        //                .clamp(0.0, 1.0) as f32,
+        //            (g_generator.get([
+        //                f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
+        //                f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
+        //            ]) * 0.5
+        //                + 0.5)
+        //                .clamp(0.0, 1.0) as f32,
+        //            (b_generator.get([
+        //                f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
+        //                f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
+        //            ]) * 0.5
+        //                + 0.5)
+        //                .clamp(0.0, 1.0) as f32,
+        //            (a_generator.get([
+        //                f64::from(NOISE_COORD_SCALE * x) / f64::from(TEXTURE_DIMENSION),
+        //                f64::from(NOISE_COORD_SCALE * y) / f64::from(TEXTURE_DIMENSION),
+        //            ]) * 0.5
+        //                + 0.5)
+        //                .clamp(0.0, 1.0) as f32,
+        //        ])
+        //    },
+        //);
+        //// Pre-multiply RGB values by their alpha values (since we're using PREMULTIPLIED_ALPHA
+        //// mode).
+        //for pixel in procedural_texture_rgba.pixels_mut() {
+        //    pixel[0] *= pixel[3];
+        //    pixel[1] *= pixel[3];
+        //    pixel[2] *= pixel[3];
+        //}
+        //let procedural_texture = Texture::from_image(
+        //    &device,
+        //    &queue,
+        //    &procedural_texture_rgba.into(),
+        //    Some("Bricks texture"),
+        //)
+        //.unwrap();
+
         //let bricks_texture_rgba = include_bytes!("../res/cube-diffuse.jpg");
         //let bricks_texture_rgba = image::load_from_memory(bricks_texture_rgba).unwrap();
         //let bricks_texture = Texture::from_image(
@@ -278,11 +287,52 @@ impl GraphicsState {
         //)
         //.unwrap();
 
-        log::debug!("Texture bind group setup"); //-------------------------------------------------
+        // Petal textures
+        let mut petal_texture_images = vec![
+            image::load_from_memory(include_bytes!("../res/pink_petals.png")).unwrap(),
+            image::load_from_memory(include_bytes!("../res/cube-diffuse.jpg")).unwrap(),
+        ];
+
+        // Pre-mulitpy alpha values since we're using PREMULTIPLIED_ALPHA_BLENDING mode.
+        for petal_texture_image in &mut petal_texture_images {
+            match petal_texture_image {
+                image::DynamicImage::ImageRgba32F(image_32f) => {
+                    for pixel in image_32f.pixels_mut() {
+                        pixel[0] *= pixel[3];
+                        pixel[1] *= pixel[3];
+                        pixel[2] *= pixel[3];
+                    }
+                }
+                image::DynamicImage::ImageRgba8(image_8u) => {
+                    for pixel in image_8u.pixels_mut() {
+                        pixel[0] = (u16::from(pixel[0]) * u16::from(pixel[3]) / 255) as u8;
+                        pixel[1] = (u16::from(pixel[1]) * u16::from(pixel[3]) / 255) as u8;
+                        pixel[2] = (u16::from(pixel[2]) * u16::from(pixel[3]) / 255) as u8;
+                    }
+                }
+                _ => log::error!("Unhandled image format for alpha premultiplication."),
+            }
+        }
+        let petal_textures: Vec<Texture> = petal_texture_images
+            .iter()
+            .enumerate()
+            .map(|(idx, petal_texture_image)| {
+                Texture::from_image(
+                    &device,
+                    &queue,
+                    petal_texture_image,
+                    Some(format!("Petal texture {}", idx).as_str()),
+                )
+                .unwrap()
+            })
+            .collect();
+
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Texture bind group setup");
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
-                    // Entry at binding 0 for the texture
+                    // Entry at binding 0 for the texture array
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::FRAGMENT,
@@ -291,34 +341,45 @@ impl GraphicsState {
                             view_dimension: wgpu::TextureViewDimension::D2,
                             sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         },
-                        count: None,
+                        count: core::num::NonZeroU32::new(petal_textures.len() as u32),
                     },
-                    // Entry at binding 1 for the sampler
+                    // Entry at binding 1 for the sampler array
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
+                        count: core::num::NonZeroU32::new(petal_textures.len() as u32),
                     },
                 ],
                 label: Some("texture_bind_group_layout"),
             });
-        let bricks_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&bricks_texture.view),
+                    resource: wgpu::BindingResource::TextureViewArray(
+                        &petal_textures
+                            .iter()
+                            .map(|tex| &tex.view)
+                            .collect::<Vec<_>>(),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&bricks_texture.sampler),
+                    resource: wgpu::BindingResource::SamplerArray(
+                        &petal_textures
+                            .iter()
+                            .map(|tex| &tex.sampler)
+                            .collect::<Vec<_>>(),
+                    ),
                 },
             ],
-            label: Some("bricks_texture_bind_group"),
+            label: Some("texture_bind_group"),
         });
 
-        log::debug!("Instance setup"); //-----------------------------------------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Instance setup");
         const NUM_INSTANCES_PER_ROW: u32 = 10;
         const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
             NUM_INSTANCES_PER_ROW as f32 * 0.5,
@@ -345,7 +406,13 @@ impl GraphicsState {
                         cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
                     };
 
-                    Pose { position, rotation }
+                    let scale = rand::random::<f32>() + 0.2;
+
+                    Pose {
+                        position,
+                        rotation,
+                        scale,
+                    }
                 })
             })
             .collect::<Vec<_>>();
@@ -359,7 +426,8 @@ impl GraphicsState {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        log::debug!("Render pipeline setup"); //----------------------------------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Render pipeline setup");
         let shader_source = wgpu::ShaderSource::Wgsl(include_str!("graphics/shader.wgsl").into());
         let shader_module_descriptor = wgpu::ShaderModuleDescriptor {
             label: Some("Shader module"),
@@ -382,7 +450,8 @@ impl GraphicsState {
             depth_texture.as_ref(),
         );
 
-        log::debug!("Colored triangle vertex buffer setup"); //-------------------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Colored triangle vertex buffer setup");
         let colored_triangle_vertex_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Triangle vertex buffer"),
@@ -391,7 +460,8 @@ impl GraphicsState {
             });
         let n_colored_triangle_vertices = COLORED_TRIANGLE_VERTICES.len() as u32;
 
-        log::debug!("Colored pentagon vertex & index buffer setup"); //-----------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Colored pentagon vertex & index buffer setup");
         let colored_pentagon_vertex_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Colored pentagon vertex buffer"),
@@ -406,7 +476,8 @@ impl GraphicsState {
             });
         let n_colored_pentagon_indices = COLORED_PENTAGON_INDICES.len() as u32;
 
-        log::debug!("Textured pentagon vertex & index buffer setup"); //-----------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Textured pentagon vertex & index buffer setup");
         let textured_pentagon_vertex_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Textured pentagon vertex buffer"),
@@ -421,7 +492,8 @@ impl GraphicsState {
             });
         let n_textured_pentagon_indices = TEXTURED_PENTAGON_INDICES.len() as u32;
 
-        log::debug!("Finished graphics setup"); //--------------------------------------------------
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Finished graphics setup");
         Self {
             surface,
             device,
@@ -448,7 +520,7 @@ impl GraphicsState {
             textured_pentagon_vertex_buffer,
             textured_pentagon_index_buffer,
             n_textured_pentagon_indices,
-            bricks_texture_bind_group,
+            bricks_texture_bind_group: texture_bind_group,
 
             instance_poses,
             instance_pose_buffer,
@@ -561,7 +633,8 @@ impl GraphicsState {
             topology: wgpu::PrimitiveTopology::TriangleList,
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
-            cull_mode: Some(wgpu::Face::Back),
+            cull_mode: None, // Disable culling for petal rendering
+            //cull_mode: Some(wgpu::Face::Back),
             unclipped_depth: false,
             polygon_mode: wgpu::PolygonMode::Fill,
             conservative: false,
@@ -767,4 +840,5 @@ impl GraphicsState {
 pub struct Pose {
     position: cgmath::Vector3<f32>,
     rotation: cgmath::Quaternion<f32>,
+    scale: f32,
 }
