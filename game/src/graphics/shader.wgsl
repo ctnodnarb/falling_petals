@@ -51,6 +51,18 @@ struct PositionTextureVertexOutput {
     @location(0) texture_coords: vec2<f32>,
 };
 
+struct PositionTextureIndexVertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) texture_coords: vec2<f32>,
+    @location(2) index: u32,
+};
+
+struct PositionTextureIndexVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) texture_coords: vec2<f32>,
+    @location(1) @interpolate(flat) index: u32,
+};
+
 struct PoseInput {
     @location(5) pose_matrix_c0: vec4<f32>,
     @location(6) pose_matrix_c1: vec4<f32>,
@@ -81,17 +93,17 @@ fn vs_colored_vertex(vertex_in: PositionColorVertexInput) -> PositionColorVertex
 }
 
 @vertex
-fn vs_textured_vertex(model: PositionTextureVertexInput, pose: PoseInput) -> PositionTextureVertexOutput{
+fn vs_textured_vertex(model: PositionTextureIndexVertexInput, pose: PoseInput) -> PositionTextureIndexVertexOutput{
     let pose_matrix = mat4x4<f32>(
         pose.pose_matrix_c0,
         pose.pose_matrix_c1,
         pose.pose_matrix_c2,
         pose.pose_matrix_c3,
     );
-    var out: PositionTextureVertexOutput;
+    var out: PositionTextureIndexVertexOutput;
     out.texture_coords = model.texture_coords;
     out.clip_position = texture_pipeline_camera.matrix4 * pose_matrix * vec4<f32>(model.position, 1.0);
-    //out.clip_position = vec4<f32>(model.position, 1.0);
+    out.index = model.index;
     return out;
 }
 
@@ -117,6 +129,14 @@ struct PositionTextureFragmentInput {
     @location(0) texture_coords: vec2<f32>,
 };
 
+// Note: This must have identical memory layout to PositionTextureIndexVertexOutput since that's
+// what is getting interpolated to create these.
+struct PositionTextureIndexFragmentInput {
+    @builtin(position) screen_position: vec4<f32>,
+    @location(0) texture_coords: vec2<f32>,
+    @location(1) @interpolate(flat) index: u32,
+};
+
 @fragment
 fn fs_colored_vertex(fragment_in: PositionColorFragmentInput) -> @location(0) vec4<f32> {
     return vec4<f32>(fragment_in.color, 1.0);
@@ -137,13 +157,13 @@ fn fs_colored_vertex(fragment_in: PositionColorFragmentInput) -> @location(0) ve
 // understand correctly, these bindings will only apply to shaders where the variable with that
 // specified binding is used (anywhere in the shader's function heirarchy).
 @group(0) @binding(0)
-var bricks_texture_diffuse: texture_2d<f32>;
+var texture_array: binding_array<texture_2d<f32>>;
 @group(0) @binding(1)
-var sampler_diffuse: sampler;
+var sampler_array: binding_array<sampler>;
 
 @fragment
-fn fs_textured_vertex(in: PositionTextureFragmentInput) -> @location(0) vec4<f32> {
-    let texture_sample = textureSample(bricks_texture_diffuse, sampler_diffuse, in.texture_coords);
+fn fs_textured_vertex(in: PositionTextureIndexFragmentInput) -> @location(0) vec4<f32> {
+    let texture_sample = textureSample(texture_array[in.index], sampler_array[in.index], in.texture_coords);
     if texture_sample[3] < 0.01{
         discard;
     } else {

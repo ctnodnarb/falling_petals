@@ -6,7 +6,9 @@ pub mod texture;
 // image package in Cargo.toml?
 //use image::GenericImageView;
 use cgmath::prelude::*;
-use gpu_types::{PositionColorVertex, PositionTextureVertex, VertexBufferEntry};
+use gpu_types::{
+    PositionColorVertex, PositionTextureIndexVertex, PositionTextureVertex, VertexBufferEntry,
+};
 use noise::{NoiseFn, Seedable};
 use texture::Texture;
 use wgpu::util::DeviceExt;
@@ -54,26 +56,31 @@ const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
 const COLORED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 // TPC = textured pentagon center (offset to move it)
 const TPC: (f32, f32, f32) = (0.0, 0.0, 0.5); //(0.3, 0.5, 0.2);
-const TEXTURED_PENTAGON_VERTICES: &[PositionTextureVertex] = &[
-    PositionTextureVertex {
+const TEXTURED_PENTAGON_VERTICES: &[PositionTextureIndexVertex] = &[
+    PositionTextureIndexVertex {
         position: [-0.0868241 + TPC.0, 0.49240386 + TPC.1, TPC.2],
         texture_coords: [0.4131759, 0.00759614],
+        index: 0,
     }, // A
-    PositionTextureVertex {
+    PositionTextureIndexVertex {
         position: [-0.49513406 + TPC.0, 0.06958647 + TPC.1, TPC.2],
         texture_coords: [0.0048659444, 0.43041354],
+        index: 0,
     }, // B
-    PositionTextureVertex {
+    PositionTextureIndexVertex {
         position: [-0.21918549 + TPC.0, -0.44939706 + TPC.1, TPC.2],
         texture_coords: [0.28081453, 0.949397],
+        index: 1,
     }, // C
-    PositionTextureVertex {
+    PositionTextureIndexVertex {
         position: [0.35966998 + TPC.0, -0.3473291 + TPC.1, TPC.2],
         texture_coords: [0.85967, 0.84732914],
+        index: 1,
     }, // D
-    PositionTextureVertex {
+    PositionTextureIndexVertex {
         position: [0.44147372 + TPC.0, 0.2347359 + TPC.1, TPC.2],
         texture_coords: [0.9414737, 0.2652641],
+        index: 1,
     }, // E
 ];
 const TEXTURED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
@@ -118,9 +125,13 @@ pub struct GraphicsState {
     pub textured_pentagon_vertex_buffer: wgpu::Buffer,
     pub textured_pentagon_index_buffer: wgpu::Buffer,
     pub n_textured_pentagon_indices: u32,
-    pub bricks_texture_bind_group: wgpu::BindGroup,
+    pub texture_bind_group: wgpu::BindGroup,
 
     // Instanced objects
+    // TODO: Move instance_poses to GameState in game.rs since it is a more game/simulation-oriented
+    // representation of the data.  Insert instance_pose_data: Vec<Matrix4> here in its place so
+    // that I don't have to construct a new Vec<Matrix4> every frame when copying the updated pose
+    // data to the GPU buffer.
     pub instance_poses: Vec<Pose>,
     pub instance_pose_buffer: wgpu::Buffer,
 }
@@ -151,7 +162,7 @@ impl GraphicsState {
         let (device, queue) = gpu_adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    features: wgpu::Features::TEXTURE_BINDING_ARRAY,
+                    features: wgpu::Features::TEXTURE_BINDING_ARRAY | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
                     //features: wgpu::Features::empty(),
                     limits: wgpu::Limits::default(),
                     label: None,
@@ -423,7 +434,7 @@ impl GraphicsState {
         let instance_pose_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance pose buffer"),
             contents: bytemuck::cast_slice(&instance_pose_data),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
         // -----------------------------------------------------------------------------------------
@@ -520,7 +531,7 @@ impl GraphicsState {
             textured_pentagon_vertex_buffer,
             textured_pentagon_index_buffer,
             n_textured_pentagon_indices,
-            bricks_texture_bind_group: texture_bind_group,
+            texture_bind_group,
 
             instance_poses,
             instance_pose_buffer,
@@ -624,7 +635,7 @@ impl GraphicsState {
             entry_point: "vs_textured_vertex",
             // The format of any vertex buffers used with this pipeline
             buffers: &[
-                PositionTextureVertex::vertex_buffer_layout(),
+                PositionTextureIndexVertex::vertex_buffer_layout(),
                 gpu_types::Matrix4::vertex_buffer_layout(),
             ],
         };
@@ -773,7 +784,7 @@ impl GraphicsState {
                 }),
             });
         textured_vertex_render_pass.set_pipeline(&self.textured_vertex_pipeline);
-        textured_vertex_render_pass.set_bind_group(0, &self.bricks_texture_bind_group, &[]);
+        textured_vertex_render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
         textured_vertex_render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
         textured_vertex_render_pass
             .set_vertex_buffer(0, self.textured_pentagon_vertex_buffer.slice(..));
@@ -807,10 +818,34 @@ impl GraphicsState {
         // TODO: The below is the 3rd option of the 3 listed at the end of this page:
         // https://sotrh.github.io/learn-wgpu/beginner/tutorial6-uniforms/#a-controller-for-our-camera
         // I should probably look into switching it to option 1 (using a staging buffer).
+        // After having read more later, it sounds like write_buffer is actually quite performant,
+        // and using a staging buffer would probably only be slightly better performance-wise
+        // (see e.g. https://github.com/gfx-rs/wgpu/discussions/1438).  It looks like
+        // wgpu::util::StagingBelt is probably the correct object / way to do a staging buffer in
+        // wgpu.
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+
+        // Rotate all the instances a bit each frame to test changing the instance pose buffer
+        // TODO:  Move any pose update code into GameState under game.rs, where it belongs better
+        // than here.
+        for pose in &mut self.instance_poses {
+            pose.rotation = cgmath::Quaternion::from_angle_y(cgmath::Rad(0.001)) * pose.rotation;
+        }
+
+        // Update the instance buffer with the current instance poses.
+        let instance_pose_data = self
+            .instance_poses
+            .iter()
+            .map(gpu_types::Matrix4::from)
+            .collect::<Vec<_>>();
+        self.queue.write_buffer(
+            &self.instance_pose_buffer,
+            0,
+            bytemuck::cast_slice(&instance_pose_data),
         );
     }
 
@@ -837,6 +872,7 @@ impl GraphicsState {
     }
 }
 
+// TODO: Move Pose to game.rs since it fits there better than here.
 pub struct Pose {
     position: cgmath::Vector3<f32>,
     rotation: cgmath::Quaternion<f32>,
