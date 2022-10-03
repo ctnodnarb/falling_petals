@@ -12,7 +12,6 @@ use winit::window::Window;
 const MOVEMENT_SPEED: f32 = 0.01;
 const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
 const N_PETALS: usize = 10;
-pub const N_PETAL_VARIANTS: usize = 2;
 
 pub struct GameState {
     /// Random number generator for this thread
@@ -35,6 +34,8 @@ pub struct GameState {
 impl GameState {
     pub async fn new(window: &Window) -> Self {
         let mut rng = rand::thread_rng();
+        let petal_texture_image_paths =
+            vec!["game/res/pink_petals.png", "game/res/cube-diffuse.jpg"];
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Instance setup");
@@ -58,11 +59,12 @@ impl GameState {
                 rotation: cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0),
                 scale: 1.5 * rng.gen::<f32>() + 0.5,
             });
-            petal_variant_indices.push(rng.gen_range(0..N_PETAL_VARIANTS));
+            petal_variant_indices.push(rng.gen_range(0..petal_texture_image_paths.len()));
         }
 
         // -----------------------------------------------------------------------------------------
-        let graphics_state = GraphicsState::new(window, &petal_poses, true).await;
+        let graphics_state =
+            GraphicsState::new(window, &petal_poses, &petal_texture_image_paths, true).await;
         let controller_state = ControllerState::new();
 
         // -----------------------------------------------------------------------------------------

@@ -136,6 +136,7 @@ impl GraphicsState {
     pub async fn new(
         window: &Window,
         petal_poses: &[crate::game::Pose],
+        petal_image_paths: &[&str],
         enable_depth_buffer: bool,
     ) -> Self {
         let size = window.inner_size();
@@ -299,19 +300,10 @@ impl GraphicsState {
         //.unwrap();
 
         // Petal textures
-        let mut petal_texture_images = vec![
-            image::load_from_memory(include_bytes!("../res/pink_petals.png")).unwrap(),
-            image::load_from_memory(include_bytes!("../res/cube-diffuse.jpg")).unwrap(),
-        ];
-        // TODO: There's probably a better way to do this, e.g. defining the list of textures to be
-        // loaded up at the GameState level so we know the correct number there, and then passing
-        // their paths in to the GraphicsState initialization.  Then I wouldn't need the
-        // N_PETAL_VARIANTS constant at all and instead could just use the length of the array.
-        assert_eq!(
-            petal_texture_images.len(),
-            crate::game::N_PETAL_VARIANTS,
-            "The N_PETAL_VARIANTS constant must match the number of petal textures loaded",
-        );
+        let mut petal_texture_images = petal_image_paths
+            .iter()
+            .map(|image_path| image::open(image_path).unwrap())
+            .collect::<Vec<_>>();
 
         // Pre-mulitpy alpha values since we're using PREMULTIPLIED_ALPHA_BLENDING mode.
         for petal_texture_image in &mut petal_texture_images {
