@@ -3,31 +3,69 @@ mod controller;
 use crate::game::controller::ControllerState;
 use crate::graphics::{camera::UprightPerspectiveCamera, GraphicsState};
 
-//use cgmath::prelude::*;
+use cgmath::prelude::*;
 use cgmath::{Deg, Rad};
+use rand::Rng;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
 use winit::window::Window;
 
 const MOVEMENT_SPEED: f32 = 0.01;
 const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
+const N_PETALS: usize = 10;
+pub const N_PETAL_VARIANTS: usize = 2;
 
 pub struct GameState {
+    /// Random number generator for this thread
+    rng: rand::rngs::ThreadRng,
+    /// Holds handles to GPU resources and objects in a form compatible with being passed/copied to
+    /// GPU buffers/resources.
     graphics_state: GraphicsState,
+    /// Tracks the state of the user input.
     controller_state: ControllerState,
+    /// Camera used to render the world
     camera: UprightPerspectiveCamera,
-    petal_positions: Vec<cgmath::Vector3<f32>>,
-    petal_orientations: Vec<cgmath::Quaternion<f32>>,
-    petal_variant_indices: Vec<i32>,
     /// Used to enable / disable input and control whether or not the mouse is grabbed.
     game_window_focused: bool,
     mouse_look_enabled: bool,
+    // Petals
+    petal_poses: Vec<Pose>,
+    petal_variant_indices: Vec<usize>,
 }
 
 impl GameState {
     pub async fn new(window: &Window) -> Self {
-        let graphics_state = GraphicsState::new(window, true).await;
+        let mut rng = rand::thread_rng();
+
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Instance setup");
+
+        let mut petal_poses = Vec::with_capacity(N_PETALS);
+        let mut petal_variant_indices = Vec::with_capacity(N_PETALS);
+        for _petal_idx in 0..N_PETALS {
+            petal_poses.push(Pose {
+                // Generate random petal positions in view of the camera -- in the [-1,1] x/y range
+                // covered by NDC (normalized device coordinates).
+                position: cgmath::vec3(
+                    2.0 * rng.gen::<f32>() - 1.0,
+                    2.0 * rng.gen::<f32>() - 1.0,
+                    2.0 * rng.gen::<f32>() - 1.0,
+                ),
+                // Give the petal no rotation, represented by a quaternion of 1.0 real part and
+                // zeros in all the imaginary dimensions.  If you think of complex numbers as
+                // representing where the point 1.0 along the real axis would get rotated to if
+                // operated on by that complex number, then this is basically just saying it stays
+                // in the same place---thus no rotation.
+                rotation: cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0),
+                scale: 1.5 * rng.gen::<f32>() + 0.5,
+            });
+            petal_variant_indices.push(rng.gen_range(0..N_PETAL_VARIANTS));
+        }
+
+        // -----------------------------------------------------------------------------------------
+        let graphics_state = GraphicsState::new(window, &petal_poses, true).await;
         let controller_state = ControllerState::new();
 
+        // -----------------------------------------------------------------------------------------
         log::debug!("Camera setup");
         // Place the camera out a ways on the +z axis (out of the screen according to NDCs) so it
         // can view objects placed around the origin when looking in the -z direction.  This way we
@@ -53,26 +91,13 @@ impl GameState {
             camera_z_far,
         );
 
-        const N_PETALS: usize = 10;
-        let mut petal_positions = Vec::with_capacity(N_PETALS);
-        let mut petal_orientations = Vec::with_capacity(N_PETALS);
-        let mut petal_variant_indices = Vec::with_capacity(N_PETALS);
-        for _petal_idx in 0..N_PETALS {
-            petal_positions.push(cgmath::vec3(
-                2.0 * rand::random::<f32>() - 1.0,
-                2.0 * rand::random::<f32>() - 1.0,
-                2.0 * rand::random::<f32>() - 1.0,
-            ));
-            petal_orientations.push(cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0));
-            petal_variant_indices.push(0);
-        }
-
+        // -----------------------------------------------------------------------------------------
         Self {
+            rng,
             graphics_state,
             controller_state,
             camera,
-            petal_positions,
-            petal_orientations,
+            petal_poses,
             petal_variant_indices,
             game_window_focused: false,
             mouse_look_enabled: true,
@@ -136,9 +161,13 @@ impl GameState {
             self.update_based_on_controller_state();
         }
 
+        // Rotate all the petals a bit each frame to test changing the instance pose buffer
+        for pose in &mut self.petal_poses {
+            pose.rotation = cgmath::Quaternion::from_angle_y(cgmath::Rad(0.03)) * pose.rotation;
+        }
+
         // Update GPU buffers according to the current game state.
-        self.graphics_state
-            .update(self.camera.get_view_projection_matrix().into());
+        self.graphics_state.update(&self.camera, &self.petal_poses);
     }
 
     fn update_based_on_controller_state(&mut self) {
@@ -161,5 +190,22 @@ impl GameState {
     /// Attempt to reconfigure / reacquire the rendering surface using the last known window size.
     pub fn reconfigure_rendering_surface(&mut self) {
         self.graphics_state.resize(self.graphics_state.size)
+    }
+}
+
+pub struct Pose {
+    position: cgmath::Vector3<f32>,
+    rotation: cgmath::Quaternion<f32>,
+    scale: f32,
+}
+
+impl From<&Pose> for crate::graphics::gpu_types::Matrix4 {
+    fn from(pose: &crate::game::Pose) -> Self {
+        crate::graphics::gpu_types::Matrix4 {
+            matrix: (cgmath::Matrix4::from_translation(pose.position)
+                * cgmath::Matrix4::from(pose.rotation)
+                * cgmath::Matrix4::from_scale(pose.scale))
+            .into(),
+        }
     }
 }

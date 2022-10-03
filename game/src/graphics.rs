@@ -5,6 +5,7 @@ pub mod texture;
 // Needed for image.dimensions(), but apparenly not since I no longer specify no features for the
 // image package in Cargo.toml?
 //use image::GenericImageView;
+use camera::Camera;
 use cgmath::prelude::*;
 use gpu_types::{
     PositionColorVertex, PositionTextureIndexVertex, PositionTextureVertex, VertexBufferEntry,
@@ -30,7 +31,7 @@ const COLORED_TRIANGLE_VERTICES: &[PositionColorVertex] = &[
     },
 ];
 // CPC = colored pentagon center (offset to move it)
-const CPC: (f32, f32, f32) = (-0.3, 0.5, 0.0);
+const CPC: (f32, f32, f32) = (-0.3, 0.5, -0.1);
 const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
     PositionColorVertex {
         position: [-0.0868241 + CPC.0, 0.49240386 + CPC.1, CPC.2],
@@ -55,7 +56,7 @@ const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
 ];
 const COLORED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 // TPC = textured pentagon center (offset to move it)
-const TPC: (f32, f32, f32) = (0.0, 0.0, 0.5); //(0.3, 0.5, 0.2);
+const TPC: (f32, f32, f32) = (0.0, 0.0, 0.0); //(0.3, 0.5, 0.2);
 const TEXTURED_PENTAGON_VERTICES: &[PositionTextureIndexVertex] = &[
     PositionTextureIndexVertex {
         position: [-0.0868241 + TPC.0, 0.49240386 + TPC.1, TPC.2],
@@ -103,7 +104,6 @@ pub struct GraphicsState {
     pub depth_texture: Option<Texture>,
 
     // Object to control the camera and construct the view/projection matrix.
-    //pub camera: UprightPerspectiveCamera,
     pub camera_uniform: gpu_types::Matrix4,
     pub camera_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
@@ -128,16 +128,16 @@ pub struct GraphicsState {
     pub texture_bind_group: wgpu::BindGroup,
 
     // Instanced objects
-    // TODO: Move instance_poses to GameState in game.rs since it is a more game/simulation-oriented
-    // representation of the data.  Insert instance_pose_data: Vec<Matrix4> here in its place so
-    // that I don't have to construct a new Vec<Matrix4> every frame when copying the updated pose
-    // data to the GPU buffer.
-    pub instance_poses: Vec<Pose>,
+    pub instance_pose_data: Vec<gpu_types::Matrix4>,
     pub instance_pose_buffer: wgpu::Buffer,
 }
 
 impl GraphicsState {
-    pub async fn new(window: &Window, enable_depth_buffer: bool) -> Self {
+    pub async fn new(
+        window: &Window,
+        petal_poses: &[crate::game::Pose],
+        enable_depth_buffer: bool,
+    ) -> Self {
         let size = window.inner_size();
 
         // -----------------------------------------------------------------------------------------
@@ -303,6 +303,15 @@ impl GraphicsState {
             image::load_from_memory(include_bytes!("../res/pink_petals.png")).unwrap(),
             image::load_from_memory(include_bytes!("../res/cube-diffuse.jpg")).unwrap(),
         ];
+        // TODO: There's probably a better way to do this, e.g. defining the list of textures to be
+        // loaded up at the GameState level so we know the correct number there, and then passing
+        // their paths in to the GraphicsState initialization.  Then I wouldn't need the
+        // N_PETAL_VARIANTS constant at all and instead could just use the length of the array.
+        assert_eq!(
+            petal_texture_images.len(),
+            crate::game::N_PETAL_VARIANTS,
+            "The N_PETAL_VARIANTS constant must match the number of petal textures loaded",
+        );
 
         // Pre-mulitpy alpha values since we're using PREMULTIPLIED_ALPHA_BLENDING mode.
         for petal_texture_image in &mut petal_texture_images {
@@ -321,7 +330,12 @@ impl GraphicsState {
                         pixel[2] = (u16::from(pixel[2]) * u16::from(pixel[3]) / 255) as u8;
                     }
                 }
-                _ => log::error!("Unhandled image format for alpha premultiplication."),
+                // No alpha channel, so no pre-multiplication necessary.  Everything is opaque.
+                image::DynamicImage::ImageRgb8(_) | image::DynamicImage::ImageRgb32F(_) => {}
+                image => log::error!(
+                    "Unhandled image format for alpha premultiplication: {:?}",
+                    image,
+                ),
             }
         }
         let petal_textures: Vec<Texture> = petal_texture_images
@@ -391,43 +405,7 @@ impl GraphicsState {
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Instance setup");
-        const NUM_INSTANCES_PER_ROW: u32 = 10;
-        const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
-            NUM_INSTANCES_PER_ROW as f32 * 0.5,
-            0.0,
-            NUM_INSTANCES_PER_ROW as f32 * 0.5,
-        );
-        let instance_poses = (0..NUM_INSTANCES_PER_ROW)
-            .flat_map(|z| {
-                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let position = cgmath::Vector3 {
-                        x: x as f32,
-                        y: 0.0,
-                        z: z as f32,
-                    } - INSTANCE_DISPLACEMENT;
-
-                    let rotation = if position.is_zero() {
-                        // this is needed so an object at (0, 0, 0) won't get scaled to zero
-                        // as Quaternions can effect scale if they're not created correctly
-                        cgmath::Quaternion::from_axis_angle(
-                            cgmath::Vector3::unit_z(),
-                            cgmath::Deg(0.0),
-                        )
-                    } else {
-                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-                    };
-
-                    let scale = rand::random::<f32>() + 0.2;
-
-                    Pose {
-                        position,
-                        rotation,
-                        scale,
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
-        let instance_pose_data = instance_poses
+        let instance_pose_data = petal_poses
             .iter()
             .map(gpu_types::Matrix4::from)
             .collect::<Vec<_>>();
@@ -533,7 +511,7 @@ impl GraphicsState {
             n_textured_pentagon_indices,
             texture_bind_group,
 
-            instance_poses,
+            instance_pose_data,
             instance_pose_buffer,
         }
     }
@@ -635,6 +613,10 @@ impl GraphicsState {
             entry_point: "vs_textured_vertex",
             // The format of any vertex buffers used with this pipeline
             buffers: &[
+                // TODO:  I realized that putting texture indices inside the vertex buffer is not
+                // going to work since it uses the same vertices for every instance.  I need a way
+                // to include it with the instance data (currently just a Matrix4 constructed from
+                // a Pose struct for each instance).
                 PositionTextureIndexVertex::vertex_buffer_layout(),
                 gpu_types::Matrix4::vertex_buffer_layout(),
             ],
@@ -801,7 +783,7 @@ impl GraphicsState {
         textured_vertex_render_pass.draw_indexed(
             0..self.n_textured_pentagon_indices,
             0,
-            0..self.instance_poses.len() as _,
+            0..self.instance_pose_data.len() as _,
         );
         drop(textured_vertex_render_pass);
 
@@ -813,8 +795,12 @@ impl GraphicsState {
 
     /// Update data in the GPU buffers according to the data as currently reflected in the game
     /// state.
-    pub fn update(&mut self, camera_uniform: gpu_types::Matrix4) {
-        self.camera_uniform = camera_uniform;
+    pub fn update(
+        &mut self,
+        camera: &camera::UprightPerspectiveCamera,
+        petal_poses: &[crate::game::Pose],
+    ) {
+        self.camera_uniform = camera.get_view_projection_matrix().into();
         // TODO: The below is the 3rd option of the 3 listed at the end of this page:
         // https://sotrh.github.io/learn-wgpu/beginner/tutorial6-uniforms/#a-controller-for-our-camera
         // I should probably look into switching it to option 1 (using a staging buffer).
@@ -829,23 +815,23 @@ impl GraphicsState {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        // Rotate all the instances a bit each frame to test changing the instance pose buffer
-        // TODO:  Move any pose update code into GameState under game.rs, where it belongs better
-        // than here.
-        for pose in &mut self.instance_poses {
-            pose.rotation = cgmath::Quaternion::from_angle_y(cgmath::Rad(0.001)) * pose.rotation;
-        }
-
         // Update the instance buffer with the current instance poses.
-        let instance_pose_data = self
-            .instance_poses
-            .iter()
-            .map(gpu_types::Matrix4::from)
-            .collect::<Vec<_>>();
+        for (pose_matrix, pose) in self.instance_pose_data.iter_mut().zip(petal_poses.iter()) {
+            //let mat: gpu_types::Matrix4 = pose.into();
+            //pose_matrix.matrix = mat.matrix;
+            pose_matrix.matrix = gpu_types::Matrix4::from(pose).matrix;
+        }
+        //// Alternate method of updating the instance buffer with current instance poses, but
+        //// involved constructing a new Vec object (which I'm assuming is less efficient?).
+        //self.instance_pose_data = petal_poses
+        //    .iter()
+        //    .map(gpu_types::Matrix4::from)
+        //    .collect::<Vec<_>>();
+
         self.queue.write_buffer(
             &self.instance_pose_buffer,
             0,
-            bytemuck::cast_slice(&instance_pose_data),
+            bytemuck::cast_slice(&self.instance_pose_data),
         );
     }
 
@@ -870,11 +856,4 @@ impl GraphicsState {
     pub fn get_aspect_ratio(&self) -> f32 {
         self.surface_config.width as f32 / self.surface_config.height as f32
     }
-}
-
-// TODO: Move Pose to game.rs since it fits there better than here.
-pub struct Pose {
-    position: cgmath::Vector3<f32>,
-    rotation: cgmath::Quaternion<f32>,
-    scale: f32,
 }

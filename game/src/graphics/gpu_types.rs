@@ -16,11 +16,11 @@ pub trait VertexBufferEntry {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Matrix4 {
-    matrix: [[f32; 4]; 4],
+    pub matrix: [[f32; 4]; 4],
 }
 
 impl Matrix4 {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             matrix: cgmath::Matrix4::identity().into(),
         }
@@ -76,17 +76,6 @@ impl From<cgmath::Matrix4<f32>> for Matrix4 {
     fn from(matrix: cgmath::Matrix4<f32>) -> Self {
         let matrix: [[f32; 4]; 4] = matrix.into();
         matrix.into()
-    }
-}
-
-impl From<&crate::graphics::Pose> for Matrix4 {
-    fn from(pose: &crate::graphics::Pose) -> Self {
-        Matrix4 {
-            matrix: (cgmath::Matrix4::from_translation(pose.position)
-                * cgmath::Matrix4::from(pose.rotation)
-                * cgmath::Matrix4::from_scale(pose.scale))
-            .into(),
-        }
     }
 }
 
@@ -166,6 +155,13 @@ impl VertexBufferEntry for PositionColorVertex {
     }
 }
 
+// TODO:  It turns out I don't need this struct for the purpose I originally intended, whihc was to
+// use the index value to index into a texture array in order to vary the texture for each instance
+// of the object.  The problem is that the vertex data (e.g. 4 vertices to draw a square) is the
+// same for every instance that I render, so I can't actually use it to vary the texture on an
+// instance-by-instance basis (but rather only on a vertex-by-vertex basis).  Instead, I need to
+// figure out a way to send instance-by-instance indices (perhaps along with the
+// instance-by-instance pose matrices) to the shaders.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PositionTextureIndexVertex {
