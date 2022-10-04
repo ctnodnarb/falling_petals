@@ -7,9 +7,7 @@ pub mod texture;
 //use image::GenericImageView;
 use camera::Camera;
 use cgmath::prelude::*;
-use gpu_types::{
-    PositionColorVertex, PositionTextureIndexVertex, PositionTextureVertex, VertexBufferEntry,
-};
+use gpu_types::{PositionColorVertex, PositionTextureVertex, VertexBufferEntry};
 use noise::{NoiseFn, Seedable};
 use texture::Texture;
 use wgpu::util::DeviceExt;
@@ -57,31 +55,26 @@ const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
 const COLORED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 // TPC = textured pentagon center (offset to move it)
 const TPC: (f32, f32, f32) = (0.0, 0.0, 0.0); //(0.3, 0.5, 0.2);
-const TEXTURED_PENTAGON_VERTICES: &[PositionTextureIndexVertex] = &[
-    PositionTextureIndexVertex {
+const TEXTURED_PENTAGON_VERTICES: &[PositionTextureVertex] = &[
+    PositionTextureVertex {
         position: [-0.0868241 + TPC.0, 0.49240386 + TPC.1, TPC.2],
         texture_coords: [0.4131759, 0.00759614],
-        index: 0,
     }, // A
-    PositionTextureIndexVertex {
+    PositionTextureVertex {
         position: [-0.49513406 + TPC.0, 0.06958647 + TPC.1, TPC.2],
         texture_coords: [0.0048659444, 0.43041354],
-        index: 0,
     }, // B
-    PositionTextureIndexVertex {
+    PositionTextureVertex {
         position: [-0.21918549 + TPC.0, -0.44939706 + TPC.1, TPC.2],
         texture_coords: [0.28081453, 0.949397],
-        index: 1,
     }, // C
-    PositionTextureIndexVertex {
+    PositionTextureVertex {
         position: [0.35966998 + TPC.0, -0.3473291 + TPC.1, TPC.2],
         texture_coords: [0.85967, 0.84732914],
-        index: 1,
     }, // D
-    PositionTextureIndexVertex {
+    PositionTextureVertex {
         position: [0.44147372 + TPC.0, 0.2347359 + TPC.1, TPC.2],
         texture_coords: [0.9414737, 0.2652641],
-        index: 1,
     }, // E
 ];
 const TEXTURED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
@@ -605,11 +598,7 @@ impl GraphicsState {
             entry_point: "vs_textured_vertex",
             // The format of any vertex buffers used with this pipeline
             buffers: &[
-                // TODO:  I realized that putting texture indices inside the vertex buffer is not
-                // going to work since it uses the same vertices for every instance.  I need a way
-                // to include it with the instance data (currently just a Matrix4 constructed from
-                // a Pose struct for each instance).
-                PositionTextureIndexVertex::vertex_buffer_layout(),
+                PositionTextureVertex::vertex_buffer_layout(),
                 gpu_types::Matrix4::vertex_buffer_layout(),
             ],
         };
