@@ -28,7 +28,7 @@ pub struct GameState {
     mouse_look_enabled: bool,
     // Petals
     petal_poses: Vec<Pose>,
-    petal_variant_indices: Vec<usize>,
+    petal_variant_indices: Vec<u32>,
 }
 
 impl GameState {
@@ -59,12 +59,18 @@ impl GameState {
                 rotation: cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0),
                 scale: 1.5 * rng.gen::<f32>() + 0.5,
             });
-            petal_variant_indices.push(rng.gen_range(0..petal_texture_image_paths.len()));
+            petal_variant_indices.push(rng.gen_range(0..petal_texture_image_paths.len() as u32));
         }
 
         // -----------------------------------------------------------------------------------------
-        let graphics_state =
-            GraphicsState::new(window, &petal_poses, &petal_texture_image_paths, true).await;
+        let graphics_state = GraphicsState::new(
+            window,
+            &petal_poses,
+            &petal_variant_indices,
+            &petal_texture_image_paths,
+            true,
+        )
+        .await;
         let controller_state = ControllerState::new();
 
         // -----------------------------------------------------------------------------------------

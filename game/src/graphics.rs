@@ -123,12 +123,14 @@ pub struct GraphicsState {
     // Instanced objects
     pub instance_pose_data: Vec<gpu_types::Matrix4>,
     pub instance_pose_buffer: wgpu::Buffer,
+    pub instance_texture_index_buffer: wgpu::Buffer,
 }
 
 impl GraphicsState {
     pub async fn new(
         window: &Window,
         petal_poses: &[crate::game::Pose],
+        petal_texture_indices: &Vec<u32>,
         petal_image_paths: &[&str],
         enable_depth_buffer: bool,
     ) -> Self {
@@ -399,6 +401,12 @@ impl GraphicsState {
             contents: bytemuck::cast_slice(&instance_pose_data),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
+        let instance_texture_index_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Instance texture index buffer"),
+                contents: bytemuck::cast_slice(petal_texture_indices),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            });
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Render pipeline setup");
@@ -498,6 +506,7 @@ impl GraphicsState {
 
             instance_pose_data,
             instance_pose_buffer,
+            instance_texture_index_buffer,
         }
     }
 
@@ -600,6 +609,15 @@ impl GraphicsState {
             buffers: &[
                 PositionTextureVertex::vertex_buffer_layout(),
                 gpu_types::Matrix4::vertex_buffer_layout(),
+                wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<u32>() as wgpu::BufferAddress,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 2,
+                        format: wgpu::VertexFormat::Uint32,
+                    }],
+                },
             ],
         };
         // Describes the state of primitve assembly and rasterization in a render pipeline.
@@ -757,6 +775,8 @@ impl GraphicsState {
         //);
         //textured_vertex_render_pass.draw_indexed(0..self.n_textured_pentagon_indices, 0, 0..1);
         textured_vertex_render_pass.set_vertex_buffer(1, self.instance_pose_buffer.slice(..));
+        textured_vertex_render_pass
+            .set_vertex_buffer(2, self.instance_texture_index_buffer.slice(..));
         textured_vertex_render_pass.set_index_buffer(
             self.textured_pentagon_index_buffer.slice(..),
             wgpu::IndexFormat::Uint16,
