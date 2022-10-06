@@ -209,3 +209,69 @@ impl VertexBufferEntry for PositionTextureIndexVertex {
         }
     }
 }
+
+/// Struct to store Vector4 values in a format that is compatible with being put in buffers sent to
+/// the GPU.
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vector4 {
+    pub vector: [f32; 4],
+}
+
+impl Vector4 {
+    pub fn new() -> Self {
+        Self {
+            vector: cgmath::Vector4::zero().into(),
+        }
+    }
+}
+
+impl From<[f32; 4]> for Vector4 {
+    fn from(vector: [f32; 4]) -> Self {
+        Vector4 { vector }
+    }
+}
+
+impl From<cgmath::Vector4<f32>> for Vector4 {
+    fn from(vector: cgmath::Vector4<f32>) -> Self {
+        let vector: [f32; 4] = vector.into();
+        vector.into()
+    }
+}
+
+/// Struct used to put u32 values into uniform buffers passed into shaders.
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct UniformU32 {
+    pub value: u32,
+    /// Needed to give this struct the minimum 16-byte alignment required by uniform buffers.
+    _pad: [u32; 3],
+}
+
+impl UniformU32 {
+    pub fn new() -> Self {
+        Self {
+            value: 0,
+            _pad: [0, 0, 0],
+        }
+    }
+}
+
+impl From<&u32> for UniformU32 {
+    fn from(value: &u32) -> Self {
+        Self {
+            value: *value,
+            _pad: [0, 0, 0],
+        }
+    }
+}
+
+/// Struct to store the texture index and the u/v coordinate and width and height of the section of
+/// the texture to use when rendering a particular petal.  This allows me to pick between multiple
+/// textures and slice out individual petals from textures that contain multiple images of petals.
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PetalTextureInfo {
+    pub petal_texture_index: UniformU32,
+    pub texture_u_v_width_height: Vector4,
+}

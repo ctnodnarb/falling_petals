@@ -68,7 +68,7 @@ struct PoseInput {
     @location(6) pose_matrix_c1: vec4<f32>,
     @location(7) pose_matrix_c2: vec4<f32>,
     @location(8) pose_matrix_c3: vec4<f32>,
-}
+};
 
 struct Matrix4Uniform {
     matrix4: mat4x4<f32>,
@@ -96,7 +96,7 @@ fn vs_colored_vertex(vertex_in: PositionColorVertexInput) -> PositionColorVertex
 fn vs_textured_vertex(
     model: PositionTextureVertexInput,
     pose: PoseInput, 
-    @location(2) texture_index: u32,
+    @builtin(instance_index) instance_index: u32,
 ) -> PositionTextureIndexVertexOutput {
     let pose_matrix = mat4x4<f32>(
         pose.pose_matrix_c0,
@@ -107,7 +107,7 @@ fn vs_textured_vertex(
     var out: PositionTextureIndexVertexOutput;
     out.texture_coords = model.texture_coords;
     out.clip_position = texture_pipeline_camera.matrix4 * pose_matrix * vec4<f32>(model.position, 1.0);
-    out.index = texture_index;
+    out.index = instance_index;
     return out;
 }
 
@@ -156,22 +156,43 @@ fn fs_colored_vertex(fragment_in: PositionColorFragmentInput) -> @location(0) ve
     //return vec4<f32>(r, g, b, 1.0);
 }
 
+// Uniform buffers require a stride of at least 16 between elements of an array.  To pass an array
+// with elements with a smaller stride than that, we must wrap them to give them a stride of 16.
+// See https://www.w3.org/TR/WGSL/#address-space-layout-constraints, particularly the examples.
+struct wrapped_u32{
+    @size(16) value: u32,
+};
+struct PetalTextureInfo {
+    // All-caps values are textually replaced at runtime before shader creation/compilation.
+    petal_texture_index: wrapped_u32,
+    texture_u_v_width_height: vec4<f32>,
+};
+
 // Define uniforms passed in through the bind group.  Note that shaders that do not access these 
 // uniform variables should not need the bind group with them to be present (I think).  If I
 // understand correctly, these bindings will only apply to shaders where the variable with that
 // specified binding is used (anywhere in the shader's function heirarchy).
 @group(0) @binding(0)
-var texture_array: binding_array<texture_2d<f32>>;
+var texture_pipeline_texture_array: binding_array<texture_2d<f32>>;
 @group(0) @binding(1)
-var sampler_array: binding_array<sampler>;
+var texture_pipeline_sampler_array: binding_array<sampler>;
+@group(0) @binding(2)
+var<uniform> texture_pipeline_petal_texture_info: array<PetalTextureInfo, N_PETALS>;
 
 @fragment
 fn fs_textured_vertex(in: PositionTextureIndexFragmentInput) -> @location(0) vec4<f32> {
-    let texture_sample = textureSample(texture_array[in.index], sampler_array[in.index], in.texture_coords);
+    let tex_bounds = texture_pipeline_petal_texture_info[in.index].texture_u_v_width_height;
+    let texture_sample = textureSample(
+        texture_pipeline_texture_array[texture_pipeline_petal_texture_info[in.index].petal_texture_index.value], 
+        texture_pipeline_sampler_array[texture_pipeline_petal_texture_info[in.index].petal_texture_index.value], 
+        vec2<f32>(
+            tex_bounds[0] + in.texture_coords[0] * tex_bounds[2],
+            tex_bounds[1] + in.texture_coords[1] * tex_bounds[3],
+        )
+    );
     if texture_sample[3] < 0.01{
         discard;
     } else {
         return texture_sample;
     }
-    //return vec4<f32>(1.0, 0.0, 0.0, 1.0);
 }
