@@ -121,18 +121,28 @@ pub struct GraphicsState {
     pub texture_bind_group: wgpu::BindGroup,
 
     // Instanced objects
-    pub instance_pose_data: Vec<gpu_types::Matrix4>,
-    pub instance_pose_buffer: wgpu::Buffer,
-    pub instance_texture_info_data: Vec<gpu_types::PetalTextureInfo>,
-    pub instance_texture_info_buffer: wgpu::Buffer,
+    /// For each petal, gpu compatible data specifying its location/orientation/scale
+    pub petal_pose_data: Vec<gpu_types::Matrix4>,
+    /// Handle to buffer for the data specifying each petal's location/orientation/scale
+    pub petal_pose_buffer: wgpu::Buffer,
+    /// For each petal, the index into which variant it is
+    pub petal_variant_index_data: Vec<gpu_types::UniformU32>,
+    /// Handle to buffer containing a variant index for each petal
+    pub petal_variant_index_buffer: wgpu::Buffer,
+    /// For each petal variant, data specifying which portion of which texture to use for that
+    /// variant
+    pub petal_variant_data: Vec<gpu_types::PetalVariant>,
+    /// Handle to buffer containing the texture slice info for each petal variant
+    pub petal_variant_buffer: wgpu::Buffer,
 }
 
 impl GraphicsState {
     pub async fn new(
         window: &Window,
+        petal_texture_image_paths: &[&str],
+        petal_variants: Vec<gpu_types::PetalVariant>,
+        petal_variant_indices: &[u32],
         petal_poses: &[crate::game::Pose],
-        petal_texture_indices: &[u32],
-        petal_image_paths: &[&str],
         enable_depth_buffer: bool,
     ) -> Self {
         let size = window.inner_size();
@@ -140,6 +150,7 @@ impl GraphicsState {
         // -----------------------------------------------------------------------------------------
         log::debug!("WGPU setup");
         let wgpu_instance = wgpu::Instance::new(wgpu::Backends::all());
+        log::debug!("wgpu report:\n{:?}", wgpu_instance.generate_report());
         let surface = unsafe { wgpu_instance.create_surface(window) };
         // The adapter represents the physical instance of your hardware.
         let gpu_adapter = wgpu_instance
@@ -150,6 +161,8 @@ impl GraphicsState {
             })
             .await
             .unwrap();
+        log::debug!("Adapter features:\n{:?}", gpu_adapter.features());
+        log::debug!("Adapter limits:\n{:?}", gpu_adapter.limits());
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Device and queue setup");
@@ -170,6 +183,8 @@ impl GraphicsState {
             )
             .await
             .unwrap();
+        log::debug!("Device features:\n{:?}", device.features());
+        log::debug!("Device limits:\n{:?}", device.limits());
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Surface setup");
@@ -298,9 +313,9 @@ impl GraphicsState {
         //.unwrap();
 
         // Petal textures
-        let mut petal_texture_images = petal_image_paths
+        let mut petal_texture_images = petal_texture_image_paths
             .iter()
-            .map(|image_path| image::open(image_path).unwrap())
+            .map(|image_path| image::open(image_path).expect(image_path))
             .collect::<Vec<_>>();
 
         // Pre-mulitpy alpha values since we're using PREMULTIPLIED_ALPHA_BLENDING mode.
@@ -344,31 +359,35 @@ impl GraphicsState {
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Instance setup");
-        let instance_pose_data = petal_poses
+        let petal_pose_data = petal_poses
             .iter()
             .map(gpu_types::Matrix4::from)
             .collect::<Vec<_>>();
-        let instance_pose_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let petal_pose_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance pose buffer"),
-            contents: bytemuck::cast_slice(&instance_pose_data),
+            contents: bytemuck::cast_slice(&petal_pose_data),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
-        let mut instance_texture_info_data =
-            Vec::<gpu_types::PetalTextureInfo>::with_capacity(petal_poses.len());
-        for tex_idx in petal_texture_indices {
-            instance_texture_info_data.push(gpu_types::PetalTextureInfo {
-                petal_texture_index: tex_idx.into(),
-                texture_u_v_width_height: gpu_types::Vector4 {
-                    vector: [0.0, 0.0, 1.0, 1.0],
-                },
-            });
-        }
-        let instance_texture_info_buffer =
+        let petal_variant_index_data = petal_variant_indices
+            .iter()
+            .map(gpu_types::UniformU32::from)
+            .collect::<Vec<_>>();
+        let petal_variant_index_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Instance texture info buffer"),
-                contents: bytemuck::cast_slice(&instance_texture_info_data),
+                label: Some("Petal variant index buffer"),
+                contents: bytemuck::cast_slice(&petal_variant_index_data),
+                // TODO: Do I need COPY_DST for buffers if I'm not going to write to them again after
+                // the initial initialization?
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
+        let petal_variant_data = petal_variants;
+        let petal_variant_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Petal variant buffer"),
+            contents: bytemuck::cast_slice(&petal_variant_data),
+            // TODO: Do I need COPY_DST for buffers if I'm not going to write to them again after
+            // the initial initialization?
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Texture bind group setup");
@@ -393,9 +412,20 @@ impl GraphicsState {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: core::num::NonZeroU32::new(petal_textures.len() as u32),
                     },
-                    // Entry at binding 2 for the petal texture info
+                    // Entry at binding 2 for the petal variant info
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: core::num::NonZeroU32::new(petal_variant_data.len() as u32),
+                    },
+                    // Entry at binding 3 for the variant indices for each petal
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
@@ -430,7 +460,11 @@ impl GraphicsState {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: instance_texture_info_buffer.as_entire_binding(),
+                    resource: petal_variant_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: petal_variant_index_buffer.as_entire_binding(),
                 },
             ],
             label: Some("texture_bind_group"),
@@ -439,6 +473,7 @@ impl GraphicsState {
         // -----------------------------------------------------------------------------------------
         log::debug!("Render pipeline setup");
         let shader_source_str = include_str!("graphics/shader.wgsl")
+            .replace("N_PETAL_VARIANTS", &petal_variant_data.len().to_string())
             .replace("N_PETALS", &petal_poses.len().to_string());
         log::debug!("Processed shader source:\n{}", &shader_source_str);
         let shader_source = wgpu::ShaderSource::Wgsl(shader_source_str.into());
@@ -535,10 +570,12 @@ impl GraphicsState {
             n_textured_pentagon_indices,
             texture_bind_group,
 
-            instance_pose_data,
-            instance_pose_buffer,
-            instance_texture_info_data,
-            instance_texture_info_buffer,
+            petal_pose_data,
+            petal_pose_buffer,
+            petal_variant_index_data,
+            petal_variant_index_buffer,
+            petal_variant_data,
+            petal_variant_buffer,
         }
     }
 
@@ -792,7 +829,7 @@ impl GraphicsState {
         textured_vertex_render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
         textured_vertex_render_pass
             .set_vertex_buffer(0, self.textured_pentagon_vertex_buffer.slice(..));
-        textured_vertex_render_pass.set_vertex_buffer(1, self.instance_pose_buffer.slice(..));
+        textured_vertex_render_pass.set_vertex_buffer(1, self.petal_pose_buffer.slice(..));
         textured_vertex_render_pass.set_index_buffer(
             self.textured_pentagon_index_buffer.slice(..),
             wgpu::IndexFormat::Uint16,
@@ -800,7 +837,7 @@ impl GraphicsState {
         textured_vertex_render_pass.draw_indexed(
             0..self.n_textured_pentagon_indices,
             0,
-            0..self.instance_pose_data.len() as _,
+            0..self.petal_pose_data.len() as _,
         );
         drop(textured_vertex_render_pass);
 
@@ -833,16 +870,16 @@ impl GraphicsState {
         );
 
         // Update the instance buffer with the current instance poses.
-        for (pose_matrix, pose) in self.instance_pose_data.iter_mut().zip(petal_poses.iter()) {
+        for (pose_matrix, pose) in self.petal_pose_data.iter_mut().zip(petal_poses.iter()) {
             //let mat: gpu_types::Matrix4 = pose.into();
             //pose_matrix.matrix = mat.matrix;
             pose_matrix.matrix = gpu_types::Matrix4::from(pose).matrix;
         }
 
         self.queue.write_buffer(
-            &self.instance_pose_buffer,
+            &self.petal_pose_buffer,
             0,
-            bytemuck::cast_slice(&self.instance_pose_data),
+            bytemuck::cast_slice(&self.petal_pose_data),
         );
     }
 

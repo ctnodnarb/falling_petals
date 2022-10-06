@@ -266,12 +266,38 @@ impl From<&u32> for UniformU32 {
     }
 }
 
+impl From<u32> for UniformU32 {
+    fn from(value: u32) -> Self {
+        Self {
+            value,
+            _pad: [0, 0, 0],
+        }
+    }
+}
+
 /// Struct to store the texture index and the u/v coordinate and width and height of the section of
 /// the texture to use when rendering a particular petal.  This allows me to pick between multiple
 /// textures and slice out individual petals from textures that contain multiple images of petals.
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct PetalTextureInfo {
+pub struct PetalVariant {
     pub petal_texture_index: UniformU32,
     pub texture_u_v_width_height: Vector4,
+}
+
+impl PetalVariant {
+    pub fn new(
+        texture_index: u32,
+        tex_u: f32,
+        tex_v: f32,
+        tex_width: f32,
+        tex_height: f32,
+    ) -> Self {
+        PetalVariant {
+            petal_texture_index: texture_index.into(),
+            texture_u_v_width_height: Vector4 {
+                vector: [tex_u, tex_v, tex_width, tex_height],
+            },
+        }
+    }
 }

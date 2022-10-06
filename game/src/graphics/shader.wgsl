@@ -159,12 +159,12 @@ fn fs_colored_vertex(fragment_in: PositionColorFragmentInput) -> @location(0) ve
 // Uniform buffers require a stride of at least 16 between elements of an array.  To pass an array
 // with elements with a smaller stride than that, we must wrap them to give them a stride of 16.
 // See https://www.w3.org/TR/WGSL/#address-space-layout-constraints, particularly the examples.
-struct wrapped_u32{
+struct UniformU32{
     @size(16) value: u32,
 };
-struct PetalTextureInfo {
+struct PetalVariant {
     // All-caps values are textually replaced at runtime before shader creation/compilation.
-    petal_texture_index: wrapped_u32,
+    petal_texture_index: UniformU32,
     texture_u_v_width_height: vec4<f32>,
 };
 
@@ -173,18 +173,33 @@ struct PetalTextureInfo {
 // understand correctly, these bindings will only apply to shaders where the variable with that
 // specified binding is used (anywhere in the shader's function heirarchy).
 @group(0) @binding(0)
-var texture_pipeline_texture_array: binding_array<texture_2d<f32>>;
+var texture_pipeline_petal_textures: binding_array<texture_2d<f32>>;
 @group(0) @binding(1)
-var texture_pipeline_sampler_array: binding_array<sampler>;
+var texture_pipeline_petal_samplers: binding_array<sampler>;
+// TODO:  I think something about how I'm defining these arrays is causing problems when I try to
+// use too many different petal variants.  It crashes with a validation error saying that I'm using
+// more uniform buffer bindings than is allowed, an dthat the limit is 12.  So seemingly, increasing
+// the number of petal variants is increasing the number of uniform buffer bindings.  I'm not sure
+// why increasing the number of petals before didn't also do that, as I think I was defining that
+// array in the same way.  Perhaps I need to change the var<uniform> below to be a single struct,
+// and define the array of PetalVariants inside of that struct.  Perhaps then it would put an array
+// of PetalVariants into a single uniform buffer instead of creating an array of uniform buffers
+// with a slot for each petal variant???  Actually, I just tested that and increasing N_PETALS also
+// breaks it by exceeding the limit of 12.  So apparently I'm passing the array of indices
+// differently now from when I was previously able to increase the petal count up to many thousands.
 @group(0) @binding(2)
-var<uniform> texture_pipeline_petal_texture_info: array<PetalTextureInfo, N_PETALS>;
+var<uniform> texture_pipeline_petal_variants: array<PetalVariant, N_PETAL_VARIANTS>;
+@group(0) @binding(3)
+var<uniform> texture_pipeline_petal_variant_indices: array<UniformU32, N_PETALS>;
 
 @fragment
 fn fs_textured_vertex(in: PositionTextureIndexFragmentInput) -> @location(0) vec4<f32> {
-    let tex_bounds = texture_pipeline_petal_texture_info[in.index].texture_u_v_width_height;
+    let variant_idx = texture_pipeline_petal_variant_indices[in.index].value;
+    let tex_idx = texture_pipeline_petal_variants[variant_idx].petal_texture_index.value;
+    let tex_bounds = texture_pipeline_petal_variants[variant_idx].texture_u_v_width_height;
     let texture_sample = textureSample(
-        texture_pipeline_texture_array[texture_pipeline_petal_texture_info[in.index].petal_texture_index.value], 
-        texture_pipeline_sampler_array[texture_pipeline_petal_texture_info[in.index].petal_texture_index.value], 
+        texture_pipeline_petal_textures[tex_idx], 
+        texture_pipeline_petal_samplers[tex_idx], 
         vec2<f32>(
             tex_bounds[0] + in.texture_coords[0] * tex_bounds[2],
             tex_bounds[1] + in.texture_coords[1] * tex_bounds[3],

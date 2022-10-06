@@ -1,7 +1,7 @@
 mod controller;
 
 use crate::game::controller::ControllerState;
-use crate::graphics::{camera::UprightPerspectiveCamera, GraphicsState};
+use crate::graphics::{camera::UprightPerspectiveCamera, gpu_types::PetalVariant, GraphicsState};
 
 use cgmath::prelude::*;
 use cgmath::{Deg, Rad};
@@ -11,7 +11,7 @@ use winit::window::Window;
 
 const MOVEMENT_SPEED: f32 = 0.01;
 const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
-const N_PETALS: usize = 10;
+const N_PETALS: usize = 8;
 
 pub struct GameState {
     /// Random number generator for this thread
@@ -34,15 +34,42 @@ pub struct GameState {
 impl GameState {
     pub async fn new(window: &Window) -> Self {
         let mut rng = rand::thread_rng();
+
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Petal variants setup");
         let petal_texture_image_paths =
-            vec!["game/res/pink_petals.png", "game/res/cube-diffuse.jpg"];
+            vec!["game/res/pink_petals_long.png", "game/res/pink_petal.png"];
+        let petal_variants = vec![
+            // TODO: If I include any more of these, I exceed the max number of UniformBuffer
+            // bindings that the device support (it caps out at 12).  I think this means that the
+            // way I'm defining and passing the uniforms is actually creating an array of uniform
+            // buffers... maybe???  I'm not really sure on that, because I though I was previously
+            // passing the texture indices the same way (as an array), but that seemed to work even
+            // when I set it to a very large number of petals.  This is probably going to take some
+            // more research.  These appear to use one more slot for each uncommented line.  It also
+            // appears that increasing N_PETALS also can break that limit, so I've changed something
+            // about how I'm passing the petal indexes from before when I was able to render
+            // thousands.
+            // pink_petals_long.png -- contains 8 petal images
+            PetalVariant::new(0, 0.000, 0.021, 0.250, 0.412),
+            PetalVariant::new(0, 0.250, 0.021, 0.250, 0.412),
+            PetalVariant::new(0, 0.500, 0.005, 0.253, 0.445),
+            //PetalVariant::new(0, 0.751, 0.001, 0.249, 0.458),
+            //PetalVariant::new(0, 0.000, 0.541, 0.251, 0.407),
+            //PetalVariant::new(0, 0.250, 0.532, 0.253, 0.423),
+            //PetalVariant::new(0, 0.502, 0.488, 0.253, 0.512),
+            //PetalVariant::new(0, 0.767, 0.487, 0.216, 0.513),
+            // pink_petal.png -- contains 1 petal image
+            PetalVariant::new(1, 0.0, 0.0, 1.0, 1.0),
+        ];
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Instance setup");
-
-        let mut petal_poses = Vec::with_capacity(N_PETALS);
         let mut petal_variant_indices = Vec::with_capacity(N_PETALS);
-        for _petal_idx in 0..N_PETALS {
+        let mut petal_poses = Vec::with_capacity(N_PETALS);
+        for _ in 0..N_PETALS {
+            // Chose a random variant for each petal instance
+            petal_variant_indices.push(rng.gen_range(0..petal_variants.len() as u32));
             petal_poses.push(Pose {
                 // Generate random petal positions in view of the camera -- in the [-1,1] x/y range
                 // covered by NDC (normalized device coordinates).
@@ -59,15 +86,15 @@ impl GameState {
                 rotation: cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0),
                 scale: 1.5 * rng.gen::<f32>() + 0.5,
             });
-            petal_variant_indices.push(rng.gen_range(0..petal_texture_image_paths.len() as u32));
         }
 
         // -----------------------------------------------------------------------------------------
         let graphics_state = GraphicsState::new(
             window,
-            &petal_poses,
-            &petal_variant_indices,
             &petal_texture_image_paths,
+            petal_variants,
+            &petal_variant_indices,
+            &petal_poses,
             true,
         )
         .await;
