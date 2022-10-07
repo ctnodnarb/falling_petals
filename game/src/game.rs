@@ -9,9 +9,21 @@ use rand::Rng;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
 use winit::window::Window;
 
-const MOVEMENT_SPEED: f32 = 0.01;
+const MOVEMENT_SPEED: f32 = 0.04;
 const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
-const N_PETALS: usize = 8;
+// The max value that can be used (currently) for N_PETALS is 4096.  This is because the max uniform
+// buffer binding size is 64KB (65536 bytes), thus limiting the number of variant indices (u32) to
+// 4096 since each one is padded out to 16 bytes.  I can probably quadruple this if I pack 4 indices
+// into each element (struct) of the array in the uniform buffer, but then indexing would be
+// slightly more complex (would have to calculate the index of the struct, then which of the 4
+// indexes inside the struct to use).  All the above is because uniform buffers don't allow array
+// fields with stride less than 16.
+// TODO: Maybe the above is not entirely true?  I ran into the 16 byte minimum stride I think when
+// I was still mistakenly passing an array of uniform buffers.  Maybe now that I've switched it to
+// pass an array inside a uniform buffer, I might be able to get rid of the padding and just send
+// a densely packed array of u32s?
+const N_PETALS: usize = 4096;
+const MAX_DISPLACEMENT: f32 = 50.0;
 
 pub struct GameState {
     /// Random number generator for this thread
@@ -37,30 +49,58 @@ impl GameState {
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Petal variants setup");
-        let petal_texture_image_paths =
-            vec!["game/res/pink_petals_long.png", "game/res/pink_petal.png"];
+        let petal_texture_image_paths = vec![
+            "game/res/pink_petals_long.png",
+            "game/res/pink_petal.png",
+            "game/res/pink_petals_short.png",
+            "game/res/purple_petals.png",
+            "game/res/red_petal.png",
+            "game/res/red_petals.png",
+            "game/res/rose_petals.png",
+        ];
         let petal_variants = vec![
-            // TODO: If I include any more of these, I exceed the max number of UniformBuffer
-            // bindings that the device support (it caps out at 12).  I think this means that the
-            // way I'm defining and passing the uniforms is actually creating an array of uniform
-            // buffers... maybe???  I'm not really sure on that, because I though I was previously
-            // passing the texture indices the same way (as an array), but that seemed to work even
-            // when I set it to a very large number of petals.  This is probably going to take some
-            // more research.  These appear to use one more slot for each uncommented line.  It also
-            // appears that increasing N_PETALS also can break that limit, so I've changed something
-            // about how I'm passing the petal indexes from before when I was able to render
-            // thousands.
             // pink_petals_long.png -- contains 8 petal images
             PetalVariant::new(0, 0.000, 0.021, 0.250, 0.412),
             PetalVariant::new(0, 0.250, 0.021, 0.250, 0.412),
             PetalVariant::new(0, 0.500, 0.005, 0.253, 0.445),
-            //PetalVariant::new(0, 0.751, 0.001, 0.249, 0.458),
-            //PetalVariant::new(0, 0.000, 0.541, 0.251, 0.407),
-            //PetalVariant::new(0, 0.250, 0.532, 0.253, 0.423),
-            //PetalVariant::new(0, 0.502, 0.488, 0.253, 0.512),
-            //PetalVariant::new(0, 0.767, 0.487, 0.216, 0.513),
+            PetalVariant::new(0, 0.751, 0.001, 0.249, 0.458),
+            PetalVariant::new(0, 0.000, 0.541, 0.251, 0.407),
+            PetalVariant::new(0, 0.250, 0.532, 0.253, 0.423),
+            PetalVariant::new(0, 0.502, 0.488, 0.253, 0.512),
+            PetalVariant::new(0, 0.767, 0.487, 0.216, 0.513),
             // pink_petal.png -- contains 1 petal image
             PetalVariant::new(1, 0.0, 0.0, 1.0, 1.0),
+            // pink_petals_short -- contains 8 petal images
+            PetalVariant::new(2, 0.000, 0.000, 0.218, 0.500),
+            PetalVariant::new(2, 0.256, 0.000, 0.223, 0.500),
+            PetalVariant::new(2, 0.506, 0.000, 0.239, 0.500),
+            PetalVariant::new(2, 0.765, 0.000, 0.235, 0.500),
+            PetalVariant::new(2, 0.000, 0.500, 0.218, 0.500),
+            PetalVariant::new(2, 0.256, 0.500, 0.223, 0.500),
+            PetalVariant::new(2, 0.506, 0.500, 0.239, 0.500),
+            PetalVariant::new(2, 0.765, 0.500, 0.235, 0.500),
+            // purple_petals.png -- contains 8 petal images
+            PetalVariant::new(3, 0.000, 0.011, 0.250, 0.447),
+            PetalVariant::new(3, 0.250, 0.000, 0.250, 0.455),
+            PetalVariant::new(3, 0.499, 0.022, 0.237, 0.408),
+            PetalVariant::new(3, 0.750, 0.060, 0.250, 0.373),
+            PetalVariant::new(3, 0.000, 0.549, 0.250, 0.451),
+            PetalVariant::new(3, 0.250, 0.551, 0.251, 0.449),
+            PetalVariant::new(3, 0.501, 0.565, 0.251, 0.435),
+            PetalVariant::new(3, 0.751, 0.592, 0.249, 0.381),
+            // red_petal.png -- contains 1 petal image
+            PetalVariant::new(4, 0.0, 0.0, 1.0, 1.0),
+            // red_petals.png -- contains 6 petal images
+            PetalVariant::new(5, 0.000, 0.027, 0.317, 0.424),
+            PetalVariant::new(5, 0.328, 0.000, 0.341, 0.465),
+            PetalVariant::new(5, 0.682, 0.023, 0.305, 0.410),
+            PetalVariant::new(5, 0.000, 0.567, 0.315, 0.421),
+            PetalVariant::new(5, 0.346, 0.541, 0.344, 0.459),
+            PetalVariant::new(5, 0.690, 0.504, 0.310, 0.405),
+            // rose_petals.png -- contains 3 petal images
+            PetalVariant::new(6, 0.012, 0.032, 0.312, 0.933),
+            PetalVariant::new(6, 0.364, 0.052, 0.284, 0.900),
+            PetalVariant::new(6, 0.686, 0.047, 0.296, 0.896),
         ];
 
         // -----------------------------------------------------------------------------------------
@@ -74,9 +114,9 @@ impl GameState {
                 // Generate random petal positions in view of the camera -- in the [-1,1] x/y range
                 // covered by NDC (normalized device coordinates).
                 position: cgmath::vec3(
-                    2.0 * rng.gen::<f32>() - 1.0,
-                    2.0 * rng.gen::<f32>() - 1.0,
-                    2.0 * rng.gen::<f32>() - 1.0,
+                    2.0 * MAX_DISPLACEMENT * rng.gen::<f32>() - MAX_DISPLACEMENT,
+                    2.0 * MAX_DISPLACEMENT * rng.gen::<f32>() - MAX_DISPLACEMENT,
+                    2.0 * MAX_DISPLACEMENT * rng.gen::<f32>() - MAX_DISPLACEMENT,
                 ),
                 // Give the petal no rotation, represented by a quaternion of 1.0 real part and
                 // zeros in all the imaginary dimensions.  If you think of complex numbers as

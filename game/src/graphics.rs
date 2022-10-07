@@ -53,31 +53,31 @@ const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
     }, // E
 ];
 const COLORED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
-// TPC = textured pentagon center (offset to move it)
-const TPC: (f32, f32, f32) = (0.0, 0.0, 0.0); //(0.3, 0.5, 0.2);
-const TEXTURED_PENTAGON_VERTICES: &[PositionTextureVertex] = &[
+// TSC = textured square center (offset to move it)
+const TSC: (f32, f32, f32) = (0.0, 0.0, 0.0); //(0.3, 0.5, 0.2);
+const TEXTURED_SQUARE_VERTICES: &[PositionTextureVertex] = &[
     PositionTextureVertex {
-        position: [-0.0868241 + TPC.0, 0.49240386 + TPC.1, TPC.2],
-        texture_coords: [0.4131759, 0.00759614],
-    }, // A
+        // Upper left corner
+        position: [-1.0 + TSC.0, 1.0 + TSC.1, TSC.2],
+        texture_coords: [0.0, 0.0],
+    },
     PositionTextureVertex {
-        position: [-0.49513406 + TPC.0, 0.06958647 + TPC.1, TPC.2],
-        texture_coords: [0.0048659444, 0.43041354],
-    }, // B
+        // Lower left corner
+        position: [-1.0 + TSC.0, -1.0 + TSC.1, TSC.2],
+        texture_coords: [0.0, 1.0],
+    },
     PositionTextureVertex {
-        position: [-0.21918549 + TPC.0, -0.44939706 + TPC.1, TPC.2],
-        texture_coords: [0.28081453, 0.949397],
-    }, // C
+        // Lower right corner
+        position: [1.0 + TSC.0, -1.0 + TSC.1, TSC.2],
+        texture_coords: [1.0, 1.0],
+    },
     PositionTextureVertex {
-        position: [0.35966998 + TPC.0, -0.3473291 + TPC.1, TPC.2],
-        texture_coords: [0.85967, 0.84732914],
-    }, // D
-    PositionTextureVertex {
-        position: [0.44147372 + TPC.0, 0.2347359 + TPC.1, TPC.2],
-        texture_coords: [0.9414737, 0.2652641],
-    }, // E
+        // Upper right corner
+        position: [1.0 + TSC.0, 1.0 + TSC.1, TSC.2],
+        texture_coords: [1.0, 0.0],
+    },
 ];
-const TEXTURED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+const TEXTURED_SQUARE_INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 pub struct GraphicsState {
     // TODO: Go through all the members of this struct and determine if they all actually need to be
@@ -169,6 +169,15 @@ impl GraphicsState {
 
         // The device represents the logical instance that you work with, and that owns all the
         // resources.
+        let limits = wgpu::Limits {
+            // Request a larger max uniform buffer size so we can have more than ~4000 petals.  It
+            // defaults to 65536 (2^16), or 64KB.  Since each petal variant index (a single u32)
+            // ends up using up 16 bytes (the minimum uniform buffer array stride), we can only fit
+            // indices fo 4096 petals in a uniform buffer with the default limits.
+            // ACTUALLY, looks like requesting more than 65536 causes it to fail to obtain a device.
+            //max_uniform_buffer_binding_size: 4 * 65536,
+            ..wgpu::Limits::default()
+        };
         let (device, queue) = gpu_adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -176,7 +185,7 @@ impl GraphicsState {
                         wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING |
                         wgpu::Features::BUFFER_BINDING_ARRAY,
                     //features: wgpu::Features::empty(),
-                    limits: wgpu::Limits::default(),
+                    limits,
                     label: None,
                 },
                 None,
@@ -421,7 +430,7 @@ impl GraphicsState {
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
-                        count: core::num::NonZeroU32::new(petal_variant_data.len() as u32),
+                        count: None, //core::num::NonZeroU32::new(petal_variant_data.len() as u32),
                     },
                     // Entry at binding 3 for the variant indices for each petal
                     wgpu::BindGroupLayoutEntry {
@@ -432,7 +441,7 @@ impl GraphicsState {
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
-                        count: core::num::NonZeroU32::new(petal_poses.len() as u32),
+                        count: None, //core::num::NonZeroU32::new(petal_poses.len() as u32),
                     },
                 ],
                 label: Some("texture_bind_group_layout"),
@@ -529,16 +538,16 @@ impl GraphicsState {
         let textured_pentagon_vertex_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Textured pentagon vertex buffer"),
-                contents: bytemuck::cast_slice(TEXTURED_PENTAGON_VERTICES),
+                contents: bytemuck::cast_slice(TEXTURED_SQUARE_VERTICES),
                 usage: wgpu::BufferUsages::VERTEX,
             });
         let textured_pentagon_index_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Textured pentagon index buffer"),
-                contents: bytemuck::cast_slice(TEXTURED_PENTAGON_INDICES),
+                contents: bytemuck::cast_slice(TEXTURED_SQUARE_INDICES),
                 usage: wgpu::BufferUsages::INDEX,
             });
-        let n_textured_pentagon_indices = TEXTURED_PENTAGON_INDICES.len() as u32;
+        let n_textured_pentagon_indices = TEXTURED_SQUARE_INDICES.len() as u32;
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Finished graphics setup");
