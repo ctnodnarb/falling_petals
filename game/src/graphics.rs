@@ -2,12 +2,14 @@ pub mod camera;
 pub mod gpu_types;
 pub mod texture;
 
+use crate::game::Pose;
+use gpu_types::{PositionColorVertex, PositionTextureVertex, VertexBufferEntry};
+
 // Needed for image.dimensions(), but apparenly not since I no longer specify no features for the
 // image package in Cargo.toml?
 //use image::GenericImageView;
 use camera::Camera;
 use cgmath::prelude::*;
-use gpu_types::{PositionColorVertex, PositionTextureVertex, VertexBufferEntry};
 use noise::{NoiseFn, Seedable};
 use texture::Texture;
 use wgpu::util::DeviceExt;
@@ -126,7 +128,7 @@ pub struct GraphicsState {
     /// Handle to buffer for the data specifying each petal's location/orientation/scale
     pub petal_pose_buffer: wgpu::Buffer,
     /// For each petal, the index into which variant it is
-    pub petal_variant_index_data: Vec<gpu_types::UniformU32>,
+    pub petal_variant_index_data: gpu_types::PetalVariantIndexArray, //Vec<gpu_types::UniformU32>,
     /// Handle to buffer containing a variant index for each petal
     pub petal_variant_index_buffer: wgpu::Buffer,
     /// For each petal variant, data specifying which portion of which texture to use for that
@@ -142,7 +144,7 @@ impl GraphicsState {
         petal_texture_image_paths: &[&str],
         petal_variants: Vec<gpu_types::PetalVariant>,
         petal_variant_indices: &[u32],
-        petal_poses: &[crate::game::Pose],
+        petal_poses: &[Pose],
         enable_depth_buffer: bool,
     ) -> Self {
         let size = window.inner_size();
@@ -205,6 +207,7 @@ impl GraphicsState {
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
         };
 
         // -----------------------------------------------------------------------------------------
@@ -377,14 +380,12 @@ impl GraphicsState {
             contents: bytemuck::cast_slice(&petal_pose_data),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
-        let petal_variant_index_data = petal_variant_indices
-            .iter()
-            .map(gpu_types::UniformU32::from)
-            .collect::<Vec<_>>();
+        let petal_variant_index_data =
+            gpu_types::PetalVariantIndexArray::from(petal_variant_indices);
         let petal_variant_index_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Petal variant index buffer"),
-                contents: bytemuck::cast_slice(&petal_variant_index_data),
+                contents: bytemuck::cast_slice(&petal_variant_index_data.petal_variant_indices),
                 // TODO: Do I need COPY_DST for buffers if I'm not going to write to them again after
                 // the initial initialization?
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -483,7 +484,11 @@ impl GraphicsState {
         log::debug!("Render pipeline setup");
         let shader_source_str = include_str!("graphics/shader.wgsl")
             .replace("N_PETAL_VARIANTS", &petal_variant_data.len().to_string())
-            .replace("N_PETALS", &petal_poses.len().to_string());
+            .replace("N_PETALS", &petal_poses.len().to_string())
+            .replace(
+                "N_VEC4_OF_PETAL_INDICES",
+                &((petal_poses.len() + 3) / 4).to_string(),
+            );
         log::debug!("Processed shader source:\n{}", &shader_source_str);
         let shader_source = wgpu::ShaderSource::Wgsl(shader_source_str.into());
         let shader_module_descriptor = wgpu::ShaderModuleDescriptor {

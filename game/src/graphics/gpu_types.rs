@@ -1,6 +1,8 @@
 //! This module defines structs that have memory layouts that are compatible with being placed into
 //! GPU buffers.
 
+use crate::game::N_PETALS;
+
 use cgmath::prelude::*;
 
 /// Trait for objects that can be placed in vertex buffers in wgpu.  Defines an associated function
@@ -298,6 +300,20 @@ impl PetalVariant {
             texture_u_v_width_height: Vector4 {
                 vector: [tex_u, tex_v, tex_width, tex_height],
             },
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PetalVariantIndexArray {
+    pub petal_variant_indices: [u32; N_PETALS],
+}
+
+impl From<&[u32]> for PetalVariantIndexArray {
+    fn from(u32_slice: &[u32]) -> Self {
+        PetalVariantIndexArray {
+            petal_variant_indices: u32_slice.try_into().expect("Mismatch in length of slice"),
         }
     }
 }

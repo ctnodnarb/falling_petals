@@ -159,15 +159,22 @@ fn fs_colored_vertex(fragment_in: PositionColorFragmentInput) -> @location(0) ve
 // Uniform buffers require a stride of at least 16 between elements of an array.  To pass an array
 // with elements with a smaller stride than that, we must wrap them to give them a stride of 16.
 // See https://www.w3.org/TR/WGSL/#address-space-layout-constraints, particularly the examples.
-struct UniformU32{
-    @size(16) value: u32,
-};
+// Or we can pack and unpack them from an array of vec4s so we don't waste space.
+//struct UniformU32{
+//    @size(16) value: u32,
+//};
 struct PetalVariantIndexArray{
-    petal_variant_indices: array<UniformU32, N_PETALS>,
+    petal_variant_indices: array<vec4<u32>, N_VEC4_OF_PETAL_INDICES>,
 }
 struct PetalVariant {
-    // All-caps values are textually replaced at runtime before shader creation/compilation.
-    petal_texture_index: UniformU32,
+    // Note:  This used to be UniformU32, but I changed it when I thought that things within a
+    // uniform buffer might not have to be 16-byte aligned and that just the start of the buffer
+    // itself needed that alignment.  However, I forgot to make the corresponding change on the
+    // Rust side, which is still sending a struct containing a UniformU32 (with 12 bytes of padding)
+    // and a Vector4<f32>.  Since this code still works without errors/bugginess, it's clear that
+    // the 12 bytes of padding are still getting inserted in this shader-side representation even
+    // though I am no longer using a UniformU32 (with explicit padding) here.
+    petal_texture_index: u32,
     texture_u_v_width_height: vec4<f32>,
 };
 struct PetalVariantArray {
@@ -189,8 +196,11 @@ var<uniform> texture_pipeline_petal_variant_indices: PetalVariantIndexArray;
 
 @fragment
 fn fs_textured_vertex(in: PositionTextureIndexFragmentInput) -> @location(0) vec4<f32> {
-    let variant_idx = texture_pipeline_petal_variant_indices.petal_variant_indices[in.index].value;
-    let tex_idx = texture_pipeline_petal_variants.petal_variants[variant_idx].petal_texture_index.value;
+    // Cast in.index from u32 to i32 because apparently either wgsl or naga does not allow the
+    // division and modulo operators to be used on u32, but they do work with i32.
+    let idx: i32 = bitcast<i32>(in.index);
+    let variant_idx = texture_pipeline_petal_variant_indices.petal_variant_indices[idx / 4][idx % 4];
+    let tex_idx = texture_pipeline_petal_variants.petal_variants[variant_idx].petal_texture_index;
     let tex_bounds = texture_pipeline_petal_variants.petal_variants[variant_idx].texture_u_v_width_height;
     let texture_sample = textureSample(
         texture_pipeline_petal_textures[tex_idx], 

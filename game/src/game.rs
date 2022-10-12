@@ -22,7 +22,7 @@ const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
 // I was still mistakenly passing an array of uniform buffers.  Maybe now that I've switched it to
 // pass an array inside a uniform buffer, I might be able to get rid of the padding and just send
 // a densely packed array of u32s?
-const N_PETALS: usize = 4096;
+pub const N_PETALS: usize = 4096;
 const MAX_DISPLACEMENT: f32 = 50.0;
 
 pub struct GameState {
@@ -105,8 +105,8 @@ impl GameState {
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Instance setup");
-        let mut petal_variant_indices = Vec::with_capacity(N_PETALS);
-        let mut petal_poses = Vec::with_capacity(N_PETALS);
+        let mut petal_variant_indices: Vec<u32> = Vec::with_capacity(N_PETALS);
+        let mut petal_poses: Vec<Pose> = Vec::with_capacity(N_PETALS);
         for _ in 0..N_PETALS {
             // Chose a random variant for each petal instance
             petal_variant_indices.push(rng.gen_range(0..petal_variants.len() as u32));
@@ -194,7 +194,13 @@ impl GameState {
                 self.mouse_look_enabled = !self.mouse_look_enabled;
                 if self.game_window_focused {
                     window.set_cursor_visible(!self.mouse_look_enabled);
-                    window.set_cursor_grab(self.mouse_look_enabled).unwrap();
+                    window
+                        .set_cursor_grab(if self.mouse_look_enabled {
+                            winit::window::CursorGrabMode::Confined
+                        } else {
+                            winit::window::CursorGrabMode::None
+                        })
+                        .unwrap();
                 }
                 // Clear any pan / tilt that has been accumulated to avoid sudden jumps in rotation
                 // when mouse look is re-enabled.
@@ -205,7 +211,13 @@ impl GameState {
                 self.game_window_focused = *focused;
                 if self.mouse_look_enabled {
                     window.set_cursor_visible(!self.game_window_focused);
-                    window.set_cursor_grab(self.game_window_focused).unwrap();
+                    window
+                        .set_cursor_grab(if self.game_window_focused {
+                            winit::window::CursorGrabMode::Confined
+                        } else {
+                            winit::window::CursorGrabMode::None
+                        })
+                        .unwrap();
                 }
                 // Clear any pan / tilt that has been accumulated to avoid sudden jumps in rotation
                 // when focus is regained.
@@ -268,10 +280,27 @@ impl GameState {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct Pose {
     position: cgmath::Vector3<f32>,
     rotation: cgmath::Quaternion<f32>,
     scale: f32,
+}
+
+impl Pose {
+    fn new() -> Self {
+        Pose {
+            position: cgmath::vec3(0.0, 0.0, 0.0),
+            rotation: cgmath::Quaternion::one(),
+            scale: 1.0,
+        }
+    }
+}
+
+impl Default for Pose {
+    fn default() -> Self {
+        Pose::new()
+    }
 }
 
 impl From<&Pose> for crate::graphics::gpu_types::Matrix4 {
