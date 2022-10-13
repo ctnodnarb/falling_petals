@@ -15,8 +15,27 @@ use texture::Texture;
 use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
 
+/// Cast a sized type to a read-only &[u8] byte array.  Note that the sized type probably should NOT
+/// contain any internal indirection / pointers, as this function is generally meant to be used to
+/// create a buffer-compatible view of data that needs to be sent somewhere (like the GPU) where
+/// those pointer values would be invalid.
+unsafe fn sized_type_as_u8_slice<T: Sized>(item: &T) -> &[u8] {
+    ::std::slice::from_raw_parts((item as *const T) as *const u8, ::std::mem::size_of::<T>())
+}
+
+/// Cast a Vec containing items of a sized type to a read-only &[u8] byte array.  Note that the
+/// sized type probably should NOT contain any internal indirection / pointers, as this function is
+/// generally meant to be used to create a buffer-compatible view of data that needs to be sent
+/// somewhere (like the GPU) where those pointer values would be invalid.
+unsafe fn vec_as_u8_slice<T: Sized>(array: &Vec<T>) -> &[u8] {
+    ::std::slice::from_raw_parts(
+        array.as_ptr() as *const u8,
+        array.len() * ::std::mem::size_of::<T>(),
+    )
+}
+
 // TODO: temp
-const COLORED_TRIANGLE_VERTICES: &[PositionColorVertex] = &[
+const COLORED_TRIANGLE_VERTICES: &[PositionColorVertex; 3] = &[
     PositionColorVertex {
         position: [0.0, 0.5, 0.1],
         color: [1.0, 0.0, 0.0],
@@ -32,7 +51,7 @@ const COLORED_TRIANGLE_VERTICES: &[PositionColorVertex] = &[
 ];
 // CPC = colored pentagon center (offset to move it)
 const CPC: (f32, f32, f32) = (-0.3, 0.5, -0.1);
-const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
+const COLORED_PENTAGON_VERTICES: &[PositionColorVertex; 5] = &[
     PositionColorVertex {
         position: [-0.0868241 + CPC.0, 0.49240386 + CPC.1, CPC.2],
         color: [0.5, 0.0, 0.5],
@@ -54,10 +73,10 @@ const COLORED_PENTAGON_VERTICES: &[PositionColorVertex] = &[
         color: [0.5, 0.0, 0.5],
     }, // E
 ];
-const COLORED_PENTAGON_INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+const COLORED_PENTAGON_INDICES: &[u16; 9] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 // TSC = textured square center (offset to move it)
 const TSC: (f32, f32, f32) = (0.0, 0.0, 0.0); //(0.3, 0.5, 0.2);
-const TEXTURED_SQUARE_VERTICES: &[PositionTextureVertex] = &[
+const TEXTURED_SQUARE_VERTICES: &[PositionTextureVertex; 4] = &[
     PositionTextureVertex {
         // Upper left corner
         position: [-1.0 + TSC.0, 1.0 + TSC.1, TSC.2],
@@ -79,7 +98,7 @@ const TEXTURED_SQUARE_VERTICES: &[PositionTextureVertex] = &[
         texture_coords: [1.0, 0.0],
     },
 ];
-const TEXTURED_SQUARE_INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
+const TEXTURED_SQUARE_INDICES: &[u16; 6] = &[0, 1, 2, 0, 2, 3];
 
 pub struct GraphicsState {
     // TODO: Go through all the members of this struct and determine if they all actually need to be
@@ -128,7 +147,7 @@ pub struct GraphicsState {
     /// Handle to buffer for the data specifying each petal's location/orientation/scale
     pub petal_pose_buffer: wgpu::Buffer,
     /// For each petal, the index into which variant it is
-    pub petal_variant_index_data: gpu_types::PetalVariantIndexArray, //Vec<gpu_types::UniformU32>,
+    pub petal_variant_index_data: Vec<u32>,
     /// Handle to buffer containing a variant index for each petal
     pub petal_variant_index_buffer: wgpu::Buffer,
     /// For each petal variant, data specifying which portion of which texture to use for that
@@ -143,7 +162,7 @@ impl GraphicsState {
         window: &Window,
         petal_texture_image_paths: &[&str],
         petal_variants: Vec<gpu_types::PetalVariant>,
-        petal_variant_indices: &[u32],
+        petal_variant_indices: Vec<u32>,
         petal_poses: &[Pose],
         enable_depth_buffer: bool,
     ) -> Self {
@@ -152,7 +171,7 @@ impl GraphicsState {
         // -----------------------------------------------------------------------------------------
         log::debug!("WGPU setup");
         let wgpu_instance = wgpu::Instance::new(wgpu::Backends::all());
-        log::debug!("wgpu report:\n{:?}", wgpu_instance.generate_report());
+        //log::debug!("wgpu report:\n{:?}", wgpu_instance.generate_report());
         let surface = unsafe { wgpu_instance.create_surface(window) };
         // The adapter represents the physical instance of your hardware.
         let gpu_adapter = wgpu_instance
@@ -227,7 +246,7 @@ impl GraphicsState {
         let camera_uniform: gpu_types::Matrix4 = cgmath::Matrix4::one().into();
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera uniform buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
+            contents: unsafe { sized_type_as_u8_slice(&camera_uniform) }, //bytemuck::cast_slice(&[camera_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -377,15 +396,14 @@ impl GraphicsState {
             .collect::<Vec<_>>();
         let petal_pose_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance pose buffer"),
-            contents: bytemuck::cast_slice(&petal_pose_data),
+            contents: unsafe { vec_as_u8_slice(&petal_pose_data) }, //bytemuck::cast_slice(&petal_pose_data),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
-        let petal_variant_index_data =
-            gpu_types::PetalVariantIndexArray::from(petal_variant_indices);
+        let petal_variant_index_data = petal_variant_indices;
         let petal_variant_index_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Petal variant index buffer"),
-                contents: bytemuck::cast_slice(&petal_variant_index_data.petal_variant_indices),
+                contents: unsafe { vec_as_u8_slice(&petal_variant_index_data) }, //bytemuck::cast_slice(&petal_variant_index_data.petal_variant_indices),
                 // TODO: Do I need COPY_DST for buffers if I'm not going to write to them again after
                 // the initial initialization?
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -393,7 +411,7 @@ impl GraphicsState {
         let petal_variant_data = petal_variants;
         let petal_variant_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Petal variant buffer"),
-            contents: bytemuck::cast_slice(&petal_variant_data),
+            contents: unsafe { vec_as_u8_slice(&petal_variant_data) }, //bytemuck::cast_slice(&petal_variant_data),
             // TODO: Do I need COPY_DST for buffers if I'm not going to write to them again after
             // the initial initialization?
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -517,7 +535,7 @@ impl GraphicsState {
         let colored_triangle_vertex_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Triangle vertex buffer"),
-                contents: bytemuck::cast_slice(COLORED_TRIANGLE_VERTICES),
+                contents: unsafe { sized_type_as_u8_slice(COLORED_TRIANGLE_VERTICES) }, //bytemuck::cast_slice(COLORED_TRIANGLE_VERTICES),
                 usage: wgpu::BufferUsages::VERTEX,
             });
         let n_colored_triangle_vertices = COLORED_TRIANGLE_VERTICES.len() as u32;
@@ -527,13 +545,13 @@ impl GraphicsState {
         let colored_pentagon_vertex_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Colored pentagon vertex buffer"),
-                contents: bytemuck::cast_slice(COLORED_PENTAGON_VERTICES),
+                contents: unsafe { sized_type_as_u8_slice(COLORED_PENTAGON_VERTICES) }, //bytemuck::cast_slice(COLORED_PENTAGON_VERTICES),
                 usage: wgpu::BufferUsages::VERTEX,
             });
         let colored_pentagon_index_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Colored pentagon index buffer"),
-                contents: bytemuck::cast_slice(COLORED_PENTAGON_INDICES),
+                contents: unsafe { sized_type_as_u8_slice(COLORED_PENTAGON_INDICES) }, //bytemuck::cast_slice(COLORED_PENTAGON_INDICES),
                 usage: wgpu::BufferUsages::INDEX,
             });
         let n_colored_pentagon_indices = COLORED_PENTAGON_INDICES.len() as u32;
@@ -543,13 +561,13 @@ impl GraphicsState {
         let textured_pentagon_vertex_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Textured pentagon vertex buffer"),
-                contents: bytemuck::cast_slice(TEXTURED_SQUARE_VERTICES),
+                contents: unsafe { sized_type_as_u8_slice(TEXTURED_SQUARE_VERTICES) }, //bytemuck::cast_slice(TEXTURED_SQUARE_VERTICES),
                 usage: wgpu::BufferUsages::VERTEX,
             });
         let textured_pentagon_index_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Textured pentagon index buffer"),
-                contents: bytemuck::cast_slice(TEXTURED_SQUARE_INDICES),
+                contents: unsafe { sized_type_as_u8_slice(TEXTURED_SQUARE_INDICES) }, //bytemuck::cast_slice(TEXTURED_SQUARE_INDICES),
                 usage: wgpu::BufferUsages::INDEX,
             });
         let n_textured_pentagon_indices = TEXTURED_SQUARE_INDICES.len() as u32;
@@ -880,7 +898,7 @@ impl GraphicsState {
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
-            bytemuck::cast_slice(&[self.camera_uniform]),
+            unsafe { sized_type_as_u8_slice(&self.camera_uniform) }, //bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
         // Update the instance buffer with the current instance poses.
@@ -893,7 +911,7 @@ impl GraphicsState {
         self.queue.write_buffer(
             &self.petal_pose_buffer,
             0,
-            bytemuck::cast_slice(&self.petal_pose_data),
+            unsafe { vec_as_u8_slice(&self.petal_pose_data) }, //bytemuck::cast_slice(&self.petal_pose_data),
         );
     }
 

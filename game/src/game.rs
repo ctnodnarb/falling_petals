@@ -22,7 +22,15 @@ const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
 // I was still mistakenly passing an array of uniform buffers.  Maybe now that I've switched it to
 // pass an array inside a uniform buffer, I might be able to get rid of the padding and just send
 // a densely packed array of u32s?
-pub const N_PETALS: usize = 4096;
+
+// N_PETALS must be a multiple of 4 due to how I'm assuming on the shader side that the petal
+// variant indexes are packed into an array of vec4<u32>s.  If it is not a multiple of 4, then the
+// buffer size sent from the CPU will not match the expected buffer size on the shader/GPU side,
+// which will cause a crash due to a validation error.  Packing the indexes into vec4s allows me to
+// fit 4 times as many of them into a uniform buffer (which has a max size of 64k or 65536 bytes on
+// my GPU) than I otherwise would be able to.  With that uniform buffer size limit, the max number
+// of petals that can be rendered is 16384.
+const N_PETALS: usize = 5000;
 const MAX_DISPLACEMENT: f32 = 50.0;
 
 pub struct GameState {
@@ -40,7 +48,6 @@ pub struct GameState {
     mouse_look_enabled: bool,
     // Petals
     petal_poses: Vec<Pose>,
-    petal_variant_indices: Vec<u32>,
 }
 
 impl GameState {
@@ -133,7 +140,7 @@ impl GameState {
             window,
             &petal_texture_image_paths,
             petal_variants,
-            &petal_variant_indices,
+            petal_variant_indices,
             &petal_poses,
             true,
         )
@@ -173,7 +180,6 @@ impl GameState {
             controller_state,
             camera,
             petal_poses,
-            petal_variant_indices,
             game_window_focused: false,
             mouse_look_enabled: true,
         }

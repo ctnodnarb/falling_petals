@@ -1,8 +1,6 @@
 //! This module defines structs that have memory layouts that are compatible with being placed into
 //! GPU buffers.
 
-use crate::game::N_PETALS;
-
 use cgmath::prelude::*;
 
 /// Trait for objects that can be placed in vertex buffers in wgpu.  Defines an associated function
@@ -16,7 +14,7 @@ pub trait VertexBufferEntry {
 /// Struct to store 4x4 matrices in a format that is compatible with being put in buffers sent to
 /// the GPU.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone)] //, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Matrix4 {
     pub matrix: [[f32; 4]; 4],
 }
@@ -82,7 +80,7 @@ impl From<cgmath::Matrix4<f32>> for Matrix4 {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug)] //, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PositionTextureVertex {
     /// 3d position of the vertex
     pub position: [f32; 3],
@@ -122,7 +120,7 @@ impl VertexBufferEntry for PositionTextureVertex {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug)] //, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PositionColorVertex {
     /// 3d position of the vertex
     pub position: [f32; 3],
@@ -165,7 +163,7 @@ impl VertexBufferEntry for PositionColorVertex {
 // figure out a way to send instance-by-instance indices (perhaps along with the
 // instance-by-instance pose matrices) to the shaders.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug)] //, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PositionTextureIndexVertex {
     /// 3d position of the vertex
     pub position: [f32; 3],
@@ -215,7 +213,7 @@ impl VertexBufferEntry for PositionTextureIndexVertex {
 /// Struct to store Vector4 values in a format that is compatible with being put in buffers sent to
 /// the GPU.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone)] //, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vector4 {
     pub vector: [f32; 4],
 }
@@ -243,7 +241,7 @@ impl From<cgmath::Vector4<f32>> for Vector4 {
 
 /// Struct used to put u32 values into uniform buffers passed into shaders.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone)] //, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UniformU32 {
     pub value: u32,
     /// Needed to give this struct the minimum 16-byte alignment required by uniform buffers.
@@ -281,7 +279,7 @@ impl From<u32> for UniformU32 {
 /// the texture to use when rendering a particular petal.  This allows me to pick between multiple
 /// textures and slice out individual petals from textures that contain multiple images of petals.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone)] //, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PetalVariant {
     pub petal_texture_index: UniformU32,
     pub texture_u_v_width_height: Vector4,
@@ -300,20 +298,6 @@ impl PetalVariant {
             texture_u_v_width_height: Vector4 {
                 vector: [tex_u, tex_v, tex_width, tex_height],
             },
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct PetalVariantIndexArray {
-    pub petal_variant_indices: [u32; N_PETALS],
-}
-
-impl From<&[u32]> for PetalVariantIndexArray {
-    fn from(u32_slice: &[u32]) -> Self {
-        PetalVariantIndexArray {
-            petal_variant_indices: u32_slice.try_into().expect("Mismatch in length of slice"),
         }
     }
 }
