@@ -129,7 +129,14 @@ impl GameState {
         let mut petal_velocities: Vec<cgmath::Vector3<f32>> = Vec::with_capacity(N_PETALS);
         for _ in 0..N_PETALS {
             // Chose a random variant for each petal instance
-            petal_variant_indices.push(rng.gen_range(0..petal_variants.len() as u32));
+            let variant_index = rng.gen_range(0..petal_variants.len() as u32);
+            petal_variant_indices.push(variant_index);
+            let aspect_ratio = petal_variants[variant_index as usize]
+                .texture_u_v_width_height
+                .vector[2]
+                / petal_variants[variant_index as usize]
+                    .texture_u_v_width_height
+                    .vector[3];
             petal_poses.push(Pose {
                 // Generate random petal positions in view of the camera -- in the [-1,1] x/y range
                 // covered by NDC (normalized device coordinates).
@@ -147,6 +154,8 @@ impl GameState {
                     rng.sample(StandardNormal),
                 )
                 .normalize(),
+                // Give the petal the right shape
+                aspect_ratio,
                 // Give the petal no rotation, represented by a quaternion of 1.0 real part and
                 // zeros in all the imaginary dimensions.  If you think of complex numbers as
                 // representing where the point 1.0 along the real axis would get rotated to if
@@ -370,6 +379,8 @@ impl GameState {
 pub struct Pose {
     position: cgmath::Vector3<f32>,
     rotation: cgmath::Quaternion<f32>,
+    // Aspect ratio: width / height
+    aspect_ratio: f32,
     scale: f32,
 }
 
@@ -378,6 +389,7 @@ impl Pose {
         Pose {
             position: cgmath::vec3(0.0, 0.0, 0.0),
             rotation: cgmath::Quaternion::one(),
+            aspect_ratio: 1.0,
             scale: 1.0,
         }
     }
@@ -394,7 +406,8 @@ impl From<&Pose> for crate::graphics::gpu_types::Matrix4 {
         crate::graphics::gpu_types::Matrix4 {
             matrix: (cgmath::Matrix4::from_translation(pose.position)
                 * cgmath::Matrix4::from(pose.rotation)
-                * cgmath::Matrix4::from_scale(pose.scale))
+                //* cgmath::Matrix4::from_scale(pose.scale)
+                * cgmath::Matrix4::from_nonuniform_scale(pose.scale * pose.aspect_ratio, pose.scale, pose.scale))
             .into(),
         }
     }
