@@ -10,6 +10,12 @@ use winit::{
     window::WindowBuilder,
 };
 
+// TODO:  Instead of having this be an async function, consider using block_on() from pollster more
+// like is done at the link below when requesting the device and adapter:
+// https://github.com/tomhoule/wgpu-minimal-video-rendering-example/blob/main/src/main.rs
+// Then the rest of the code would not be running within pollster's state machine (that probably
+// doesn't matter much for performance, but maybe the debug stack would be easier to read /
+// understand, and less deep).
 pub async fn run() {
     //println!("ortho: {:?}", cgmath::ortho(1.0, 2.0, 3.0, 4.0, 5.0, 6.0));
     // Window setup

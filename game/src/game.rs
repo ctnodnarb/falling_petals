@@ -5,7 +5,9 @@ use crate::graphics::{camera::UprightPerspectiveCamera, gpu_types::PetalVariant,
 
 use cgmath::prelude::*;
 use cgmath::{Deg, Rad};
-use rand::Rng;
+use noise::{NoiseFn, Seedable};
+use rand::prelude::*;
+use rand_distr::StandardNormal;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
 use winit::window::Window;
 
@@ -30,12 +32,18 @@ const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
 // fit 4 times as many of them into a uniform buffer (which has a max size of 64k or 65536 bytes on
 // my GPU) than I otherwise would be able to.  With that uniform buffer size limit, the max number
 // of petals that can be rendered is 16384.
-const N_PETALS: usize = 5000;
+const N_PETALS: usize = 3000;
 const MAX_DISPLACEMENT: f32 = 50.0;
+const FALL_SPEED: f32 = 0.1;
+const VELOCITY_DECAY: f32 = 0.999;
+const PER_PETAL_ACCELERATION: f32 = 0.000;
+const WIND_ACCELERATION: f32 = 0.005;
 
 pub struct GameState {
     /// Random number generator for this thread
     rng: rand::rngs::ThreadRng,
+    /// Game start time
+    start_time: std::time::Instant,
     /// Holds handles to GPU resources and objects in a form compatible with being passed/copied to
     /// GPU buffers/resources.
     graphics_state: GraphicsState,
@@ -48,6 +56,10 @@ pub struct GameState {
     mouse_look_enabled: bool,
     // Petals
     petal_poses: Vec<Pose>,
+    petal_velocities: Vec<cgmath::Vector3<f32>>,
+    wind_velocity: cgmath::Vector3<f32>,
+    // Random noise generator
+    noise_generator: noise::Perlin,
 }
 
 impl GameState {
@@ -114,6 +126,7 @@ impl GameState {
         log::debug!("Instance setup");
         let mut petal_variant_indices: Vec<u32> = Vec::with_capacity(N_PETALS);
         let mut petal_poses: Vec<Pose> = Vec::with_capacity(N_PETALS);
+        let mut petal_velocities: Vec<cgmath::Vector3<f32>> = Vec::with_capacity(N_PETALS);
         for _ in 0..N_PETALS {
             // Chose a random variant for each petal instance
             petal_variant_indices.push(rng.gen_range(0..petal_variants.len() as u32));
@@ -125,15 +138,33 @@ impl GameState {
                     2.0 * MAX_DISPLACEMENT * rng.gen::<f32>() - MAX_DISPLACEMENT,
                     2.0 * MAX_DISPLACEMENT * rng.gen::<f32>() - MAX_DISPLACEMENT,
                 ),
+                // Randomly choose a rotation (this gives a uniform distribution over all rotations
+                // in 3d space):
+                rotation: cgmath::Quaternion::new(
+                    rng.sample(StandardNormal),
+                    rng.sample(StandardNormal),
+                    rng.sample(StandardNormal),
+                    rng.sample(StandardNormal),
+                )
+                .normalize(),
                 // Give the petal no rotation, represented by a quaternion of 1.0 real part and
                 // zeros in all the imaginary dimensions.  If you think of complex numbers as
                 // representing where the point 1.0 along the real axis would get rotated to if
                 // operated on by that complex number, then this is basically just saying it stays
                 // in the same place---thus no rotation.
-                rotation: cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0),
+                //rotation: cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0),
                 scale: 1.5 * rng.gen::<f32>() + 0.5,
             });
+            petal_velocities.push(cgmath::vec3(
+                rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
+                rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
+                rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
+            ))
         }
+
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Noise generator setup");
+        let noise_generator = noise::Perlin::default().set_seed(rng.gen()); //noise::Fbm::<noise::OpenSimplex>::default().set_seed(rng.gen());
 
         // -----------------------------------------------------------------------------------------
         let graphics_state = GraphicsState::new(
@@ -174,14 +205,23 @@ impl GameState {
         );
 
         // -----------------------------------------------------------------------------------------
+        let wind_velocity = cgmath::vec3(
+            rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
+            rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
+            rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
+        );
         Self {
             rng,
+            start_time: std::time::Instant::now(),
             graphics_state,
             controller_state,
             camera,
             petal_poses,
+            petal_velocities,
+            wind_velocity,
             game_window_focused: false,
             mouse_look_enabled: true,
+            noise_generator,
         }
     }
 
@@ -255,8 +295,48 @@ impl GameState {
         }
 
         // Rotate all the petals a bit each frame to test changing the instance pose buffer
-        for pose in &mut self.petal_poses {
+        for (pose, velocity) in self
+            .petal_poses
+            .iter_mut()
+            .zip(self.petal_velocities.iter_mut())
+        {
             pose.rotation = cgmath::Quaternion::from_angle_y(cgmath::Rad(0.03)) * pose.rotation;
+            //pose.position += *velocity + self.wind_velocity;
+            pose.position[1] -= FALL_SPEED;
+            //*velocity += cgmath::vec3(
+            //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
+            //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
+            //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
+            //);
+            //self.wind_velocity += cgmath::vec3(
+            //    self.rng.gen::<f32>() * WIND_ACCELERATION * 2.0 - WIND_ACCELERATION,
+            //    self.rng.gen::<f32>() * WIND_ACCELERATION * 2.0 - WIND_ACCELERATION,
+            //    self.rng.gen::<f32>() * WIND_ACCELERATION * 2.0 - WIND_ACCELERATION,
+            //);
+            //*velocity *= VELOCITY_DECAY;
+            //self.wind_velocity *= VELOCITY_DECAY;
+            //pose.position[0] += 0.1
+            //    * self.noise_generator.get([
+            //        f64::from(pose.position[0]),
+            //        f64::from(pose.position[1]),
+            //        f64::from(pose.position[2]),
+            //        0.1 * self.start_time.elapsed().as_secs_f64(),
+            //    ]) as f32;
+            if pose.position[0] < -MAX_DISPLACEMENT {
+                pose.position[0] += 2.0 * MAX_DISPLACEMENT;
+            } else if pose.position[0] > MAX_DISPLACEMENT {
+                pose.position[0] -= 2.0 * MAX_DISPLACEMENT;
+            }
+            if pose.position[1] < -MAX_DISPLACEMENT {
+                pose.position[1] += 2.0 * MAX_DISPLACEMENT;
+            } else if pose.position[1] > MAX_DISPLACEMENT {
+                pose.position[1] -= 2.0 * MAX_DISPLACEMENT;
+            }
+            if pose.position[2] < -MAX_DISPLACEMENT {
+                pose.position[2] += 2.0 * MAX_DISPLACEMENT;
+            } else if pose.position[2] > MAX_DISPLACEMENT {
+                pose.position[2] -= 2.0 * MAX_DISPLACEMENT;
+            }
         }
 
         // Update GPU buffers according to the current game state.

@@ -507,7 +507,7 @@ impl GraphicsState {
                 "N_VEC4_OF_PETAL_INDICES",
                 &((petal_poses.len() + 3) / 4).to_string(),
             );
-        log::debug!("Processed shader source:\n{}", &shader_source_str);
+        //log::debug!("Processed shader source:\n{}", &shader_source_str);
         let shader_source = wgpu::ShaderSource::Wgsl(shader_source_str.into());
         let shader_module_descriptor = wgpu::ShaderModuleDescriptor {
             label: Some("Shader module"),
@@ -777,9 +777,60 @@ impl GraphicsState {
                 });
 
         // Render things with colored vertexes -----------------------------------------------------
-        let mut colored_vertex_render_pass =
+        //let mut colored_vertex_render_pass =
+        //    command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        //        label: Some("Colored vertex render pass"),
+        //        color_attachments: &[
+        //            // This is what @location(0) in the fragment shader output targets
+        //            Some(wgpu::RenderPassColorAttachment {
+        //                view: &output_texture_view,
+        //                resolve_target: None,
+        //                ops: wgpu::Operations {
+        //                    load: wgpu::LoadOp::Clear(wgpu::Color {
+        //                        r: 0.0, //0.1,
+        //                        g: 0.0, //0.2,
+        //                        b: 0.0, //0.3,
+        //                        a: 1.0,
+        //                    }),
+        //                    store: true,
+        //                },
+        //            }),
+        //        ],
+        //        depth_stencil_attachment: self.depth_texture.as_ref().map(|depth_texture| {
+        //            wgpu::RenderPassDepthStencilAttachment {
+        //                view: &depth_texture.view,
+        //                depth_ops: Some(wgpu::Operations {
+        //                    load: wgpu::LoadOp::Clear(1.0),
+        //                    store: true,
+        //                }),
+        //                stencil_ops: None,
+        //            }
+        //        }),
+        //    });
+        //colored_vertex_render_pass.set_pipeline(&self.colored_vertex_pipeline);
+        //colored_vertex_render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+        //// Draw colored triangle
+        //colored_vertex_render_pass
+        //    .set_vertex_buffer(0, self.colored_triangle_vertex_buffer.slice(..));
+        //colored_vertex_render_pass.draw(0..self.n_colored_triangle_vertices, 0..1);
+        //// Draw colored pentagon
+        //colored_vertex_render_pass
+        //    .set_vertex_buffer(0, self.colored_pentagon_vertex_buffer.slice(..));
+        //colored_vertex_render_pass.set_index_buffer(
+        //    self.colored_pentagon_index_buffer.slice(..),
+        //    wgpu::IndexFormat::Uint16,
+        //);
+        //colored_vertex_render_pass.draw_indexed(0..self.n_colored_pentagon_indices, 0, 0..1);
+        //// Drop render_pass to force the end of a mutable borrow of command_encoder that was started
+        //// when we called command_encoder.begin_render_pass().  This is needed so we can start
+        //// another render pass and/or call command_encoder.finish() to create the final command
+        //// buffer to send to the queue.
+        //drop(colored_vertex_render_pass);
+
+        // Render things with textured vertexes ----------------------------------------------------
+        let mut textured_vertex_render_pass =
             command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Colored vertex render pass"),
+                label: Some("Textured vertex render pass"),
                 color_attachments: &[
                     // This is what @location(0) in the fragment shader output targets
                     Some(wgpu::RenderPassColorAttachment {
@@ -806,55 +857,30 @@ impl GraphicsState {
                         stencil_ops: None,
                     }
                 }),
-            });
-        colored_vertex_render_pass.set_pipeline(&self.colored_vertex_pipeline);
-        colored_vertex_render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-        // Draw colored triangle
-        colored_vertex_render_pass
-            .set_vertex_buffer(0, self.colored_triangle_vertex_buffer.slice(..));
-        colored_vertex_render_pass.draw(0..self.n_colored_triangle_vertices, 0..1);
-        // Draw colored pentagon
-        colored_vertex_render_pass
-            .set_vertex_buffer(0, self.colored_pentagon_vertex_buffer.slice(..));
-        colored_vertex_render_pass.set_index_buffer(
-            self.colored_pentagon_index_buffer.slice(..),
-            wgpu::IndexFormat::Uint16,
-        );
-        colored_vertex_render_pass.draw_indexed(0..self.n_colored_pentagon_indices, 0, 0..1);
-        // Drop render_pass to force the end of a mutable borrow of command_encoder that was started
-        // when we called command_encoder.begin_render_pass().  This is needed so we can start
-        // another render pass and/or call command_encoder.finish() to create the final command
-        // buffer to send to the queue.
-        drop(colored_vertex_render_pass);
-
-        // Render things with textured vertexes ----------------------------------------------------
-        let mut textured_vertex_render_pass =
-            command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Textured vertex render pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &output_texture_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        // Don't clear since we already drew some stuff in the last pass.  Instead,
-                        // load what has already been drawn from memory.
-                        load: wgpu::LoadOp::Load,
-                        // Do write new values into the depth buffer
-                        store: true,
-                    },
-                })],
-                depth_stencil_attachment: self.depth_texture.as_ref().map(|depth_texture| {
-                    wgpu::RenderPassDepthStencilAttachment {
-                        view: &depth_texture.view,
-                        depth_ops: Some(wgpu::Operations {
-                            // Don't clear since we already drew some stuff in the last pass.  Instead,
-                            // load what has already been drawn from memory.
-                            load: wgpu::LoadOp::Load,
-                            // Do write new values into the depth buffer
-                            store: true,
-                        }),
-                        stencil_ops: None,
-                    }
-                }),
+                //color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                //    view: &output_texture_view,
+                //    resolve_target: None,
+                //    ops: wgpu::Operations {
+                //            // Don't clear since we already drew some stuff in the last pass.  Instead,
+                //            // load what has already been drawn from memory.
+                //            load: wgpu::LoadOp::Load,
+                //            // Do write new values into the depth buffer
+                //            store: true,
+                //        },
+                //})],
+                //depth_stencil_attachment: self.depth_texture.as_ref().map(|depth_texture| {
+                //    wgpu::RenderPassDepthStencilAttachment {
+                //        view: &depth_texture.view,
+                //        depth_ops: Some(wgpu::Operations {
+                //            // Don't clear since we already drew some stuff in the last pass.  Instead,
+                //            // load what has already been drawn from memory.
+                //            load: wgpu::LoadOp::Load,
+                //            // Do write new values into the depth buffer
+                //            store: true,
+                //        }),
+                //        stencil_ops: None,
+                //    }
+                //}),
             });
         textured_vertex_render_pass.set_pipeline(&self.textured_vertex_pipeline);
         textured_vertex_render_pass.set_bind_group(0, &self.texture_bind_group, &[]);

@@ -20,6 +20,8 @@
     cgmath = "0.18"
     noise = "0.8"
     rand = "0.8"
+    rand_distr = { version = "0.4", features = ["std_math"] }
+    toml = "0.5"
 
     [dependencies.image]
         version = "0.24"
