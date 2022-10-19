@@ -11,7 +11,7 @@ use rand_distr::StandardNormal;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
 use winit::window::Window;
 
-const MOVEMENT_SPEED: f32 = 0.04;
+const MOVEMENT_SPEED: f32 = 0.1;
 const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
 // The max value that can be used (currently) for N_PETALS is 4096.  This is because the max uniform
 // buffer binding size is 64KB (65536 bytes), thus limiting the number of variant indices (u32) to

@@ -15,6 +15,12 @@ use texture::Texture;
 use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
 
+const VIDEO_WIDTH: u32 = 1920;
+const VIDEO_HEIGHT: u32 = 1080;
+const VIDEO_PIXEL_COUNT: u32 = VIDEO_WIDTH * VIDEO_HEIGHT;
+const VIDEO_FRAME_SIZE: u64 = std::mem::size_of::<u32>() as u64 * VIDEO_PIXEL_COUNT as u64;
+const VIDEO_TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
+
 /// Cast a sized type to a read-only &[u8] byte array.  Note that the sized type probably should NOT
 /// contain any internal indirection / pointers, as this function is generally meant to be used to
 /// create a buffer-compatible view of data that needs to be sent somewhere (like the GPU) where
@@ -155,6 +161,14 @@ pub struct GraphicsState {
     pub petal_variant_data: Vec<gpu_types::PetalVariant>,
     /// Handle to buffer containing the texture slice info for each petal variant
     pub petal_variant_buffer: wgpu::Buffer,
+
+    // Rendering to video
+    /// Texture to render each video frame to
+    pub video_output_texture: wgpu::Texture,
+    /// View used to render to the video_output_texture
+    pub video_output_texture_view: wgpu::TextureView,
+    /// Buffer to transfer video output data from GPU to CPU
+    pub video_output_buffer: wgpu::Buffer,
 }
 
 impl GraphicsState {
@@ -573,6 +587,38 @@ impl GraphicsState {
         let n_textured_pentagon_indices = TEXTURED_SQUARE_INDICES.len() as u32;
 
         // -----------------------------------------------------------------------------------------
+        log::debug!("Set up video output objects");
+        let video_output_texture_descriptor = wgpu::TextureDescriptor {
+            label: Some("video output texture"),
+            size: wgpu::Extent3d {
+                width: VIDEO_WIDTH,
+                height: VIDEO_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: VIDEO_TEXTURE_FORMAT,
+            // COPY_SRC so we can copy the texture contents to a buffer (video_output_buffer),
+            // RENDER_ATTACHMENT so that we can attach the texture to a render pass so it can be
+            // rendered to.
+            usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
+        };
+        let video_output_texture = device.create_texture(&video_output_texture_descriptor);
+        let video_output_texture_view = video_output_texture.create_view(&Default::default());
+        let video_output_buffer_descriptor = wgpu::BufferDescriptor {
+            label: Some("video output buffer"),
+            size: VIDEO_FRAME_SIZE,
+            // COPY_DST so we can copy data into the buffer, MAP_READ so that we can read the
+            // contents of the buffer from the CPU side.
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        };
+        let video_output_buffer = device.create_buffer(&video_output_buffer_descriptor);
+        // TODO: LEFT OFF HERE: was setting variables up similar to how they did at:
+        // https://github.com/tomhoule/wgpu-minimal-video-rendering-example/blob/main/src/main.rs
+
+        // -----------------------------------------------------------------------------------------
         log::debug!("Finished graphics setup");
         Self {
             surface,
@@ -608,6 +654,10 @@ impl GraphicsState {
             petal_variant_index_buffer,
             petal_variant_data,
             petal_variant_buffer,
+
+            video_output_texture,
+            video_output_texture_view,
+            video_output_buffer,
         }
     }
 
@@ -770,6 +820,12 @@ impl GraphicsState {
         let output_texture_view = output_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        self.render_to_texture_view(&output_texture_view);
+        output_texture.present();
+        Ok(())
+    }
+
+    pub fn render_to_texture_view(&mut self, output_texture_view: &wgpu::TextureView) {
         let mut command_encoder =
             self.device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -901,8 +957,6 @@ impl GraphicsState {
 
         // Create the final command buffer and submit it to the queue ------------------------------
         self.queue.submit(std::iter::once(command_encoder.finish()));
-        output_texture.present();
-        Ok(())
     }
 
     /// Update data in the GPU buffers according to the data as currently reflected in the game
