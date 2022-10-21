@@ -1,4 +1,3 @@
-
 use anyhow::*;
 use image::GenericImageView;
 
@@ -15,12 +14,13 @@ impl Texture {
 
     pub fn create_depth_buffer_texture(
         device: &wgpu::Device,
-        surface_config: &wgpu::SurfaceConfiguration,
+        width: u32,
+        height: u32,
         label: Option<&str>,
     ) -> Self {
         let size = wgpu::Extent3d {
-            width: surface_config.width,
-            height: surface_config.height,
+            width,
+            height,
             depth_or_array_layers: 1,
         };
         let texture_label = label.map(String::from);
@@ -31,10 +31,10 @@ impl Texture {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: Self::DEPTH_FORMAT,
-            usage: 
+            usage:
                 // Allow texture to be attached as the output of a render pass (it gets written to
                 // by the rendering pass)
-                wgpu::TextureUsages::RENDER_ATTACHMENT 
+                wgpu::TextureUsages::RENDER_ATTACHMENT
                 // Allow texture to be used as BindingType::Texture in a bind group (allow the
                 // texture to be used in shaders)
                 | wgpu::TextureUsages::TEXTURE_BINDING
@@ -48,7 +48,8 @@ impl Texture {
         let sampler_label = label.map(|texture_label| format!("{} sampler", texture_label));
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: sampler_label.as_ref().map(|x| x as &str),
-            // For texture coords outside the range, use the closest texture color on the edge of the texture
+            // For texture coords outside the range, use the closest texture color on the edge of
+            // the texture
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -64,16 +65,31 @@ impl Texture {
             lod_max_clamp: 100.0,
             ..Default::default()
         });
-        Self {texture, texture_label, view, sampler, sampler_label}
+        Self {
+            texture,
+            texture_label,
+            view,
+            sampler,
+            sampler_label,
+        }
     }
 
-    pub fn from_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &image::DynamicImage, label: Option<&str>) -> Result<Self> {
+    pub fn from_image(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        img: &image::DynamicImage,
+        label: Option<&str>,
+    ) -> Result<Self> {
         // TODO: It would probably be good to use 16 or 32 bit color instead of rgba8.  Making this
         // change will likely require similar changes in the structures / buffers / uniforms
         // definitions in the shader code and shader definition / setup code.
         let rgba_image = img.to_rgba8();
         let dimensions = img.dimensions();
-        let size = wgpu::Extent3d {width: dimensions.0, height: dimensions.1, depth_or_array_layers: 1};
+        let size = wgpu::Extent3d {
+            width: dimensions.0,
+            height: dimensions.1,
+            depth_or_array_layers: 1,
+        };
         let texture_label = label.map(String::from);
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: texture_label.as_ref().map(|label| label as &str),
@@ -83,9 +99,9 @@ impl Texture {
             dimension: wgpu::TextureDimension::D2,
             // Most images are stored using sRGB format
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: 
+            usage:
                 // Allow the texture to be used in bind groups (so it can be used in shaders)
-                wgpu::TextureUsages::TEXTURE_BINDING 
+                wgpu::TextureUsages::TEXTURE_BINDING
                 // Allows us to copy data to the texture
                 | wgpu::TextureUsages::COPY_DST,
         });
@@ -114,9 +130,9 @@ impl Texture {
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: sampler_label.as_ref().map(|label| label as &str),
             // How to handle texture coords outside the range of the texture
-            address_mode_u: wgpu::AddressMode:: ClampToEdge,
-            address_mode_v: wgpu::AddressMode:: ClampToEdge,
-            address_mode_w: wgpu::AddressMode:: ClampToEdge,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
             // How to interpolate when magnifying / minifying the texture
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Nearest,
@@ -124,12 +140,55 @@ impl Texture {
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
-        Ok(Self { texture, texture_label, view, sampler, sampler_label })
+        Ok(Self {
+            texture,
+            texture_label,
+            view,
+            sampler,
+            sampler_label,
+        })
     }
 
-    pub fn from_bytes(device: &wgpu::Device, queue: &wgpu::Queue, bytes: &[u8], label: Option<&str>) -> Result<Self> {
+    pub fn from_bytes(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        bytes: &[u8],
+        label: Option<&str>,
+    ) -> Result<Self> {
         let img = image::load_from_memory(bytes)?;
         Self::from_image(device, queue, &img, label)
+    }
+
+    pub fn from_descriptor(
+        device: &wgpu::Device,
+        texture_descriptor: &wgpu::TextureDescriptor,
+    ) -> Self {
+        let texture_label = texture_descriptor.label.map(String::from);
+        let texture = device.create_texture(texture_descriptor);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler_label = texture_label
+            .as_ref()
+            .map(|texture_label| format!("{} sampler", texture_label));
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: sampler_label.as_ref().map(|label| label as &str),
+            // How to handle texture coords outside the range of the texture
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            // How to interpolate when magnifying / minifying the texture
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            // How to blend between mipmaps
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+        Self {
+            texture,
+            texture_label,
+            view,
+            sampler,
+            sampler_label,
+        }
     }
 
     //pub fn from_mandelbrot(device: &wgpu::Device, queue: &wgpu::Queue, size: u32, label: &str) -> Self {

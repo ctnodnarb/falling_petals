@@ -5,7 +5,7 @@ use crate::graphics::{camera::UprightPerspectiveCamera, gpu_types::PetalVariant,
 
 use cgmath::prelude::*;
 use cgmath::{Deg, Rad};
-use noise::{NoiseFn, Seedable};
+//use noise::{NoiseFn, Seedable};
 use rand::prelude::*;
 use rand_distr::StandardNormal;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
@@ -59,11 +59,11 @@ pub struct GameState {
     petal_velocities: Vec<cgmath::Vector3<f32>>,
     wind_velocity: cgmath::Vector3<f32>,
     // Random noise generator
-    noise_generator: noise::Perlin,
+    //noise_generator: noise::Perlin,
 }
 
 impl GameState {
-    pub async fn new(window: &Window) -> Self {
+    pub fn new(window: &Window) -> Self {
         let mut rng = rand::thread_rng();
 
         // -----------------------------------------------------------------------------------------
@@ -173,7 +173,7 @@ impl GameState {
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Noise generator setup");
-        let noise_generator = noise::Perlin::default().set_seed(rng.gen()); //noise::Fbm::<noise::OpenSimplex>::default().set_seed(rng.gen());
+        //let noise_generator = noise::Perlin::default().set_seed(rng.gen()); //noise::Fbm::<noise::OpenSimplex>::default().set_seed(rng.gen());
 
         // -----------------------------------------------------------------------------------------
         let graphics_state = GraphicsState::new(
@@ -182,9 +182,7 @@ impl GameState {
             petal_variants,
             petal_variant_indices,
             &petal_poses,
-            true,
-        )
-        .await;
+        );
         let controller_state = ControllerState::new();
 
         // -----------------------------------------------------------------------------------------
@@ -230,7 +228,7 @@ impl GameState {
             wind_velocity,
             game_window_focused: false,
             mouse_look_enabled: true,
-            noise_generator,
+            //noise_generator,
         }
     }
 

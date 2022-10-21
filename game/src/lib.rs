@@ -16,7 +16,7 @@ use winit::{
 // Then the rest of the code would not be running within pollster's state machine (that probably
 // doesn't matter much for performance, but maybe the debug stack would be easier to read /
 // understand, and less deep).
-pub async fn run() {
+pub fn run() {
     //println!("ortho: {:?}", cgmath::ortho(1.0, 2.0, 3.0, 4.0, 5.0, 6.0));
     // Window setup
     env_logger::init();
@@ -24,9 +24,7 @@ pub async fn run() {
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     // Initialize the game
-    let mut game_state = GameState::new(&window).await;
-    // Graphics initialization
-    //let mut graphics_state = GraphicsState::new(&window).await;
+    let mut game_state = GameState::new(&window);
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {

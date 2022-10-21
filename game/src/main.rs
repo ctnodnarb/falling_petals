@@ -1,5 +1,6 @@
 use game::run;
 
 fn main() {
-    pollster::block_on(run());
+    //pollster::block_on(run());
+    run();
 }
