@@ -11,12 +11,14 @@ use gpu_types::{PositionTextureVertex, VertexBufferEntry};
 use camera::Camera;
 use cgmath::prelude::*;
 //use noise::{NoiseFn, Seedable};
+use std::io::Write;
 use texture::Texture;
 use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
 
 const VIDEO_WIDTH: u32 = 1920;
 const VIDEO_HEIGHT: u32 = 1080;
+const VIDEO_FRAME_RATE: u32 = 60;
 const VIDEO_PIXEL_COUNT: u32 = VIDEO_WIDTH * VIDEO_HEIGHT;
 // One u32 per pixel for Bgra8unorm
 const VIDEO_FRAME_SIZE: u64 = std::mem::size_of::<u32>() as u64 * VIDEO_PIXEL_COUNT as u64;
@@ -106,7 +108,7 @@ pub struct GraphicsState {
     /// Rendering pipeline handle for rendering to video
     pub video_render_pipeline: wgpu::RenderPipeline,
     /// JoinHandle for the video encoding thread
-    pub video_thread_handle: std::thread::JoinHandle<()>,
+    pub video_thread_handle: std::thread::JoinHandle<std::io::Result<()>>,
     /// Transmitter to send frames to the video encoding thread
     pub video_thread_tx: std::sync::mpsc::Sender<Vec<u8>>,
 
@@ -809,37 +811,72 @@ impl GraphicsState {
     }
 }
 
-fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) {
+fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) -> std::io::Result<()> {
     println!("Video thread starting.");
+    let size_str = format!("{}x{}", VIDEO_WIDTH, VIDEO_HEIGHT);
+    let ffmpeg_process = std::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "bgra",
+            "-s",
+            &size_str,
+            "-r",
+            "30",
+            "-i",
+            "-",
+            "-c:v",
+            "libx264",
+            "-an",
+            "output_video.h264",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()?;
+    let mut ffmpeg_stdin = ffmpeg_process.stdin.as_ref().unwrap();
+    let mut frame_count = 0;
     while let Ok(message) = receiver.recv() {
-        println!(
-            "Video thread message (len {}): {:?} ...",
-            message.len(),
-            &message[0..100],
-        );
-    }
-    println!("Video thread exiting.");
-}
-
-struct BufferDimensions {
-    width: usize,
-    height: usize,
-    unpadded_bytes_per_row: usize,
-    padded_bytes_per_row: usize,
-}
-
-impl BufferDimensions {
-    fn new(width: usize, height: usize) -> Self {
-        let bytes_per_pixel = std::mem::size_of::<u32>();
-        let unpadded_bytes_per_row = width * bytes_per_pixel;
-        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize;
-        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
-        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
-        Self {
-            width,
-            height,
-            unpadded_bytes_per_row,
-            padded_bytes_per_row,
+        //println!(
+        //    "Video thread message (len {}): {:?} ...",
+        //    message.len(),
+        //    &message[0..100],
+        //);
+        ffmpeg_stdin.write_all(&message).unwrap();
+        frame_count += 1;
+        if frame_count % VIDEO_FRAME_RATE == 0 {
+            log::debug!("Video duration = {}s", frame_count / VIDEO_FRAME_RATE);
         }
     }
+    println!("Video thread exiting.");
+    ffmpeg_stdin.flush().unwrap();
+    let ffmpeg_output = ffmpeg_process.wait_with_output().unwrap();
+    log::debug!("FFMPEG OUTPUT:\n{:?}\nEND FFMPEG OUTPUT", ffmpeg_output);
+    Ok(())
 }
+
+// From the wgpu closure example... but it seems like things are working without me making sure that
+// the buffer is properly aligned?
+//struct BufferDimensions {
+//    width: usize,
+//    height: usize,
+//    unpadded_bytes_per_row: usize,
+//    padded_bytes_per_row: usize,
+//}
+//
+//impl BufferDimensions {
+//    fn new(width: usize, height: usize) -> Self {
+//        let bytes_per_pixel = std::mem::size_of::<u32>();
+//        let unpadded_bytes_per_row = width * bytes_per_pixel;
+//        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize;
+//        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
+//        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
+//        Self {
+//            width,
+//            height,
+//            unpadded_bytes_per_row,
+//            padded_bytes_per_row,
+//        }
+//    }
+//}
