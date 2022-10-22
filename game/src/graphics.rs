@@ -110,7 +110,7 @@ pub struct GraphicsState {
     /// JoinHandle for the video encoding thread
     pub video_thread_handle: std::thread::JoinHandle<std::io::Result<()>>,
     /// Transmitter to send frames to the video encoding thread
-    pub video_thread_tx: std::sync::mpsc::Sender<Vec<u8>>,
+    pub video_thread_tx: std::sync::mpsc::SyncSender<Vec<u8>>,
 
     // Instance data -------------------------------------------------------------------------------
     /// For each petal, gpu compatible data specifying its location/orientation/scale
@@ -496,7 +496,13 @@ impl GraphicsState {
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Spawn video coding thread");
-        let (video_thread_tx, video_thread_rx) = std::sync::mpsc::channel();
+        // I tried using a std::sync::mpsc::channel() here before, but it seems to accumulate more
+        // and more memory for everything I send over it without bound until my RAM fills up and
+        // things crash. Maybe this is because frames are getting rendered faster than ffmpeg can
+        // encode them?  I'm not sure.  But switching to use a bounded channel
+        // (std::sync::mpsc::sync_channel(bound)) fixed the problem so that now my RAM usage remains
+        // stable.
+        let (video_thread_tx, video_thread_rx) = std::sync::mpsc::sync_channel(1);
         let video_thread_handle = std::thread::spawn(move || video_thread_fn(video_thread_rx));
 
         // -----------------------------------------------------------------------------------------
@@ -657,7 +663,6 @@ impl GraphicsState {
         // block until the submission has completed.
         //self.device.poll(wgpu::Maintain::Poll);
 
-        log::debug!("Send frame to video encoder");
         let buffer_slice = self.video_buffer.slice(..);
         let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
         // This queus up the buffer to be mapped, and then calls the FnOnce with a result passed in
@@ -671,7 +676,6 @@ impl GraphicsState {
         self.device.poll(wgpu::Maintain::WaitForSubmissionIndex(
             video_render_submission_index,
         ));
-        log::debug!("Submission has finished processing");
         if let Some(Ok(())) = pollster::block_on(receiver.receive()) {
             let padded_buffer = buffer_slice.get_mapped_range();
             let frame_pixel_data = padded_buffer.to_owned();
@@ -812,9 +816,10 @@ impl GraphicsState {
 }
 
 fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) -> std::io::Result<()> {
-    println!("Video thread starting.");
+    log::debug!("Video thread starting.");
     let size_str = format!("{}x{}", VIDEO_WIDTH, VIDEO_HEIGHT);
-    let ffmpeg_process = std::process::Command::new("ffmpeg")
+    let frame_rate_str = VIDEO_FRAME_RATE.to_string();
+    let mut ffmpeg_process = std::process::Command::new("ffmpeg")
         .args([
             "-y",
             "-f",
@@ -824,7 +829,7 @@ fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) -> std::io::Res
             "-s",
             &size_str,
             "-r",
-            "30",
+            &frame_rate_str,
             "-i",
             "-",
             "-c:v",
@@ -833,9 +838,9 @@ fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) -> std::io::Res
             "output_video.h264",
         ])
         .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
+        //.stdout(std::process::Stdio::piped())
         .spawn()?;
-    let mut ffmpeg_stdin = ffmpeg_process.stdin.as_ref().unwrap();
+    let mut ffmpeg_stdin = ffmpeg_process.stdin.take().unwrap();
     let mut frame_count = 0;
     while let Ok(message) = receiver.recv() {
         //println!(
@@ -848,6 +853,13 @@ fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) -> std::io::Res
         if frame_count % VIDEO_FRAME_RATE == 0 {
             log::debug!("Video duration = {}s", frame_count / VIDEO_FRAME_RATE);
         }
+        // I had an issue where this program continued taking up more and more memory the longer it
+        // ran until it filled up all my RAM.  I think what might have been happening is that the
+        // rendering thread fed data to ffmpeg faster than ffmpeg could encode it, causing the
+        // pipe between processes to fill up with more and more buffered data over time.  So I'm
+        // trying to fix that by making sure it gets flushed out each frame.
+        // NOPE, THIS DIDN'T WORK.  It still consumes more and more memory...
+        ffmpeg_stdin.flush()?;
     }
     println!("Video thread exiting.");
     ffmpeg_stdin.flush().unwrap();
