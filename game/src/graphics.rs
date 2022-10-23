@@ -5,12 +5,8 @@ pub mod texture;
 use crate::game::Pose;
 use gpu_types::{PositionTextureVertex, VertexBufferEntry};
 
-// Needed for image.dimensions(), but apparenly not since I no longer specify no features for the
-// image package in Cargo.toml?
-//use image::GenericImageView;
 use camera::Camera;
 use cgmath::prelude::*;
-//use noise::{NoiseFn, Seedable};
 use std::io::Write;
 use texture::Texture;
 use wgpu::util::DeviceExt;
@@ -108,9 +104,9 @@ pub struct GraphicsState {
     /// Rendering pipeline handle for rendering to video
     pub video_render_pipeline: wgpu::RenderPipeline,
     /// JoinHandle for the video encoding thread
-    pub video_thread_handle: std::thread::JoinHandle<std::io::Result<()>>,
+    pub video_thread_handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
     /// Transmitter to send frames to the video encoding thread
-    pub video_thread_tx: std::sync::mpsc::SyncSender<Vec<u8>>,
+    pub video_thread_tx: Option<std::sync::mpsc::SyncSender<Vec<u8>>>,
 
     // Instance data -------------------------------------------------------------------------------
     /// For each petal, gpu compatible data specifying its location/orientation/scale
@@ -521,8 +517,8 @@ impl GraphicsState {
             video_buffer,
             video_depth_texture,
             video_render_pipeline,
-            video_thread_handle,
-            video_thread_tx,
+            video_thread_handle: Some(video_thread_handle),
+            video_thread_tx: Some(video_thread_tx),
 
             petal_pose_data,
             petal_pose_buffer,
@@ -641,7 +637,8 @@ impl GraphicsState {
                 layout: wgpu::ImageDataLayout {
                     offset: 0,
                     // TODO: looks like bytes_per_row must be padded to a multiple of
-                    // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT, which is 256.
+                    // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT, which is 256.  But apparently this is
+                    // still working even though I'm not ensuring that.
                     bytes_per_row: Some(
                         std::num::NonZeroU32::new(VIDEO_WIDTH * std::mem::size_of::<u32>() as u32)
                             .unwrap(),
@@ -659,9 +656,6 @@ impl GraphicsState {
         );
         let video_render_submission_index =
             self.queue.submit(std::iter::once(command_encoder.finish()));
-        // Not sure if this is necessary since passing it Poll instead of Wait doesn't cause it to
-        // block until the submission has completed.
-        //self.device.poll(wgpu::Maintain::Poll);
 
         let buffer_slice = self.video_buffer.slice(..);
         let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
@@ -679,7 +673,11 @@ impl GraphicsState {
         if let Some(Ok(())) = pollster::block_on(receiver.receive()) {
             let padded_buffer = buffer_slice.get_mapped_range();
             let frame_pixel_data = padded_buffer.to_owned();
-            self.video_thread_tx.send(frame_pixel_data).unwrap();
+            self.video_thread_tx
+                .as_ref()
+                .unwrap()
+                .send(frame_pixel_data)
+                .unwrap();
             // Must drop any views into the buffer before we unmap it.
             drop(padded_buffer);
             self.video_buffer.unmap();
@@ -783,8 +781,6 @@ impl GraphicsState {
 
         // Update the instance buffer with the current instance poses.
         for (pose_matrix, pose) in self.petal_pose_data.iter_mut().zip(petal_poses.iter()) {
-            //let mat: gpu_types::Matrix4 = pose.into();
-            //pose_matrix.matrix = mat.matrix;
             pose_matrix.matrix = gpu_types::Matrix4::from(pose).matrix;
         }
 
@@ -815,6 +811,19 @@ impl GraphicsState {
     }
 }
 
+impl Drop for GraphicsState {
+    fn drop(&mut self) {
+        log::debug!("Dropping GraphicsState");
+        let tx = self.video_thread_tx.take();
+        // Close the channel so that the video coding thread will exit normally.
+        drop(tx);
+        // Wait for the video coding thread to exit normally.
+        if let Some(thread_handle) = self.video_thread_handle.take() {
+            thread_handle.join().unwrap().unwrap();
+        }
+    }
+}
+
 fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) -> std::io::Result<()> {
     log::debug!("Video thread starting.");
     let size_str = format!("{}x{}", VIDEO_WIDTH, VIDEO_HEIGHT);
@@ -838,33 +847,24 @@ fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) -> std::io::Res
             "output_video.h264",
         ])
         .stdin(std::process::Stdio::piped())
-        //.stdout(std::process::Stdio::piped())
         .spawn()?;
     let mut ffmpeg_stdin = ffmpeg_process.stdin.take().unwrap();
     let mut frame_count = 0;
     while let Ok(message) = receiver.recv() {
-        //println!(
-        //    "Video thread message (len {}): {:?} ...",
-        //    message.len(),
-        //    &message[0..100],
-        //);
         ffmpeg_stdin.write_all(&message).unwrap();
         frame_count += 1;
         if frame_count % VIDEO_FRAME_RATE == 0 {
             log::debug!("Video duration = {}s", frame_count / VIDEO_FRAME_RATE);
         }
-        // I had an issue where this program continued taking up more and more memory the longer it
-        // ran until it filled up all my RAM.  I think what might have been happening is that the
-        // rendering thread fed data to ffmpeg faster than ffmpeg could encode it, causing the
-        // pipe between processes to fill up with more and more buffered data over time.  So I'm
-        // trying to fix that by making sure it gets flushed out each frame.
-        // NOPE, THIS DIDN'T WORK.  It still consumes more and more memory...
-        ffmpeg_stdin.flush()?;
     }
-    println!("Video thread exiting.");
+    log::debug!("Flushing out last frames");
     ffmpeg_stdin.flush().unwrap();
+    log::debug!("Done flushing frames.  Closing the pipe and waiting for ffmpeg to finish...");
+    // Close the pipe to ffmpeg so that ffmpeg will finish and exit
+    drop(ffmpeg_stdin);
+    // Wait for ffmpeg to finish and exit
     let ffmpeg_output = ffmpeg_process.wait_with_output().unwrap();
-    log::debug!("FFMPEG OUTPUT:\n{:?}\nEND FFMPEG OUTPUT", ffmpeg_output);
+    log::debug!("ffmpeg finished! Output: {:?}", ffmpeg_output);
     Ok(())
 }
 
