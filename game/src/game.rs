@@ -108,7 +108,7 @@ impl GameState {
             PetalVariant::new(3, 0.501, 0.565, 0.251, 0.435),
             PetalVariant::new(3, 0.751, 0.592, 0.249, 0.381),
             // red_petal.png -- contains 1 petal image
-            PetalVariant::new(4, 0.0, 0.0, 1.0, 1.0),
+            //PetalVariant::new(4, 0.0, 0.0, 1.0, 1.0), // looks like an apple...
             // red_petals.png -- contains 6 petal images
             PetalVariant::new(5, 0.000, 0.027, 0.317, 0.424),
             PetalVariant::new(5, 0.328, 0.000, 0.341, 0.465),
@@ -170,6 +170,7 @@ impl GameState {
                 rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
             ))
         }
+        petal_poses.sort_unstable_by(|a, b| a.position[2].partial_cmp(&b.position[2]).unwrap());
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Noise generator setup");
@@ -191,7 +192,7 @@ impl GameState {
         // can view objects placed around the origin when looking in the -z direction.  This way we
         // should have a similar view of things that we orignally rendered directly in NDCs without
         // having to change their coordinates.
-        let camera_location = cgmath::Point3::<f32>::new(0.0, 0.0, 4.0);
+        let camera_location = cgmath::Point3::<f32>::new(0.0, 0.0, 50.0);
         // Turn the camera 90 degrees to the left (ccw around the y axis pointing up) to face in the
         // -z direction, thus matching normalized device coordinates.  Note that the camera is
         // defined such that pan and tilt angles of 0 mean the camera is pointing the same direction
@@ -199,7 +200,7 @@ impl GameState {
         let camera_pan = Rad::<f32>(0.0); //cgmath::Rad::<f32>::turn_div_4();
         let camera_tilt = Rad::<f32>(0.0);
         let camera_fov_y = Rad::<f32>::from(Deg::<f32>(60.0));
-        let camera_z_near = 0.1;
+        let camera_z_near = 1.0;
         let camera_z_far = 100.0;
         let camera = UprightPerspectiveCamera::new(
             camera_location,
@@ -227,8 +228,7 @@ impl GameState {
             petal_velocities,
             wind_velocity,
             game_window_focused: false,
-            mouse_look_enabled: true,
-            //noise_generator,
+            mouse_look_enabled: false,
         }
     }
 
