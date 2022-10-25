@@ -2,7 +2,7 @@
 mod game;
 mod graphics;
 
-use crate::game::GameState;
+use cgmath::{Deg, Rad};
 
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -24,7 +24,22 @@ pub fn run() {
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     // Initialize the game
-    let mut game_state = GameState::new(&window);
+    let game_config = game::GameConfig {
+        n_petals: 7000,
+        fall_speed: 0.1,
+        camera_near: 1.0,
+        camera_far: 100.0,
+        camera_fov_y: Rad::<f32>::from(Deg::<f32>(60.0)),
+        // Fit 60fovy frustum with 100 view depth and 1920x1080 aspect ratio (needs to be >103)
+        max_x: 110.0,
+        // Fit 60fovy frustum with 100 view depth (needs to be >58)
+        max_y: 65.0,
+        // max_z is doubled (goes negative and positive) to get the total view depth
+        max_z: 50.0,
+        player_movement_speed: 0.1,
+        player_turn_speed: Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0),
+    };
+    let mut game_state = game::GameState::new(&window, game_config);
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {

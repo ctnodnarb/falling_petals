@@ -2,7 +2,7 @@ pub mod camera;
 pub mod gpu_types;
 pub mod texture;
 
-use crate::game::Pose;
+use crate::game::PetalState;
 use gpu_types::{PositionTextureVertex, VertexBufferEntry};
 
 use camera::Camera;
@@ -142,8 +142,7 @@ impl GraphicsState {
         window: &Window,
         petal_texture_image_paths: &[&str],
         petal_variants: Vec<gpu_types::PetalVariant>,
-        petal_variant_indices: Vec<u32>,
-        petal_poses: &[Pose],
+        petal_states: &[PetalState],
     ) -> Self {
         let size = window.inner_size();
 
@@ -305,16 +304,19 @@ impl GraphicsState {
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Instance setup");
-        let petal_pose_data = petal_poses
+        let petal_pose_data = petal_states
             .iter()
-            .map(gpu_types::Matrix4::from)
+            .map(|state| gpu_types::Matrix4::from(&state.pose))
             .collect::<Vec<_>>();
         let petal_pose_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance pose buffer"),
             contents: unsafe { vec_as_u8_slice(&petal_pose_data) },
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
-        let petal_variant_index_data = petal_variant_indices;
+        let petal_variant_index_data = petal_states
+            .iter()
+            .map(|state| state.variant_index)
+            .collect::<Vec<_>>();
         let petal_variant_index_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Petal variant index buffer"),
@@ -417,10 +419,10 @@ impl GraphicsState {
         log::debug!("Render pipeline setup");
         let shader_source_str = include_str!("graphics/shader.wgsl")
             .replace("N_PETAL_VARIANTS", &petal_variant_data.len().to_string())
-            .replace("N_PETALS", &petal_poses.len().to_string())
+            .replace("N_PETALS", &petal_states.len().to_string())
             .replace(
                 "N_VEC4_OF_PETAL_INDICES",
-                &((petal_poses.len() + 3) / 4).to_string(),
+                &((petal_states.len() + 3) / 4).to_string(),
             );
         //log::debug!("Processed shader source:\n{}", &shader_source_str);
         let shader_source = wgpu::ShaderSource::Wgsl(shader_source_str.into());
@@ -764,7 +766,7 @@ impl GraphicsState {
     pub fn update(
         &mut self,
         camera: &camera::UprightPerspectiveCamera,
-        petal_poses: &[crate::game::Pose],
+        petal_states: &[crate::game::PetalState],
     ) {
         self.camera_uniform = camera.get_view_projection_matrix().into();
         // TODO: The below is the 3rd option of the 3 listed at the end of this page:
@@ -780,8 +782,8 @@ impl GraphicsState {
         });
 
         // Update the instance buffer with the current instance poses.
-        for (pose_matrix, pose) in self.petal_pose_data.iter_mut().zip(petal_poses.iter()) {
-            pose_matrix.matrix = gpu_types::Matrix4::from(pose).matrix;
+        for (pose_matrix, petal_state) in self.petal_pose_data.iter_mut().zip(petal_states.iter()) {
+            pose_matrix.matrix = gpu_types::Matrix4::from(&petal_state.pose).matrix;
         }
 
         self.queue.write_buffer(&self.petal_pose_buffer, 0, unsafe {

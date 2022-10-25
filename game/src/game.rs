@@ -11,35 +11,29 @@ use rand_distr::StandardNormal;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
 use winit::window::Window;
 
-const MOVEMENT_SPEED: f32 = 0.1;
-const TURN_SPEED: Rad<f32> = Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0);
-// The max value that can be used (currently) for N_PETALS is 4096.  This is because the max uniform
-// buffer binding size is 64KB (65536 bytes), thus limiting the number of variant indices (u32) to
-// 4096 since each one is padded out to 16 bytes.  I can probably quadruple this if I pack 4 indices
-// into each element (struct) of the array in the uniform buffer, but then indexing would be
-// slightly more complex (would have to calculate the index of the struct, then which of the 4
-// indexes inside the struct to use).  All the above is because uniform buffers don't allow array
-// fields with stride less than 16.
-// TODO: Maybe the above is not entirely true?  I ran into the 16 byte minimum stride I think when
-// I was still mistakenly passing an array of uniform buffers.  Maybe now that I've switched it to
-// pass an array inside a uniform buffer, I might be able to get rid of the padding and just send
-// a densely packed array of u32s?
-
-// N_PETALS must be a multiple of 4 due to how I'm assuming on the shader side that the petal
-// variant indexes are packed into an array of vec4<u32>s.  If it is not a multiple of 4, then the
-// buffer size sent from the CPU will not match the expected buffer size on the shader/GPU side,
-// which will cause a crash due to a validation error.  Packing the indexes into vec4s allows me to
-// fit 4 times as many of them into a uniform buffer (which has a max size of 64k or 65536 bytes on
-// my GPU) than I otherwise would be able to.  With that uniform buffer size limit, the max number
-// of petals that can be rendered is 16384.
-const N_PETALS: usize = 3000;
-const MAX_DISPLACEMENT: f32 = 50.0;
-const FALL_SPEED: f32 = 0.1;
-const VELOCITY_DECAY: f32 = 0.999;
-const PER_PETAL_ACCELERATION: f32 = 0.000;
-const WIND_ACCELERATION: f32 = 0.005;
+/// n_petals must be a multiple of 4 due to how I'm assuming on the shader side that the petal
+/// variant indexes are packed into an array of vec4<u32>s.  If it is not a multiple of 4, then the
+/// buffer size sent from the CPU will not match the expected buffer size on the shader/GPU side,
+/// which will cause a crash due to a validation error.  Packing the indexes into vec4s allows me to
+/// fit 4 times as many of them into a uniform buffer (which has a max size of 64k or 65536 bytes on
+/// my GPU) than I otherwise would be able to.  With that uniform buffer size limit, the max number
+/// of petals that can be rendered is 16384.
+pub struct GameConfig {
+    pub n_petals: usize,
+    pub fall_speed: f32,
+    pub camera_near: f32,
+    pub camera_far: f32,
+    pub camera_fov_y: Rad<f32>,
+    pub max_x: f32,
+    pub max_y: f32,
+    pub max_z: f32,
+    pub player_movement_speed: f32,
+    pub player_turn_speed: Rad<f32>,
+}
 
 pub struct GameState {
+    /// Config values for the game
+    config: crate::game::GameConfig,
     /// Random number generator for this thread
     rng: rand::rngs::ThreadRng,
     /// Game start time
@@ -55,15 +49,14 @@ pub struct GameState {
     game_window_focused: bool,
     mouse_look_enabled: bool,
     // Petals
-    petal_poses: Vec<Pose>,
-    petal_velocities: Vec<cgmath::Vector3<f32>>,
-    wind_velocity: cgmath::Vector3<f32>,
+    petal_states: Vec<PetalState>,
+    //`wind_velocity: cgmath::Vector3<f32>,
     // Random noise generator
     //noise_generator: noise::Perlin,
 }
 
 impl GameState {
-    pub fn new(window: &Window) -> Self {
+    pub fn new(window: &Window, config: GameConfig) -> Self {
         let mut rng = rand::thread_rng();
 
         // -----------------------------------------------------------------------------------------
@@ -124,26 +117,23 @@ impl GameState {
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Instance setup");
-        let mut petal_variant_indices: Vec<u32> = Vec::with_capacity(N_PETALS);
-        let mut petal_poses: Vec<Pose> = Vec::with_capacity(N_PETALS);
-        let mut petal_velocities: Vec<cgmath::Vector3<f32>> = Vec::with_capacity(N_PETALS);
-        for _ in 0..N_PETALS {
+        let mut petal_states: Vec<PetalState> = Vec::with_capacity(config.n_petals);
+        for _ in 0..config.n_petals {
             // Chose a random variant for each petal instance
             let variant_index = rng.gen_range(0..petal_variants.len() as u32);
-            petal_variant_indices.push(variant_index);
             let aspect_ratio = petal_variants[variant_index as usize]
                 .texture_u_v_width_height
                 .vector[2]
                 / petal_variants[variant_index as usize]
                     .texture_u_v_width_height
                     .vector[3];
-            petal_poses.push(Pose {
+            let pose = Pose {
                 // Generate random petal positions in view of the camera -- in the [-1,1] x/y range
                 // covered by NDC (normalized device coordinates).
                 position: cgmath::vec3(
-                    2.0 * MAX_DISPLACEMENT * rng.gen::<f32>() - MAX_DISPLACEMENT,
-                    2.0 * MAX_DISPLACEMENT * rng.gen::<f32>() - MAX_DISPLACEMENT,
-                    2.0 * MAX_DISPLACEMENT * rng.gen::<f32>() - MAX_DISPLACEMENT,
+                    2.0 * config.max_x * rng.gen::<f32>() - config.max_x,
+                    2.0 * config.max_y * rng.gen::<f32>() - config.max_y,
+                    2.0 * config.max_z * rng.gen::<f32>() - config.max_z,
                 ),
                 // Randomly choose a rotation (this gives a uniform distribution over all rotations
                 // in 3d space):
@@ -163,14 +153,19 @@ impl GameState {
                 // in the same place---thus no rotation.
                 //rotation: cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0),
                 scale: 1.5 * rng.gen::<f32>() + 0.5,
+            };
+            //petal_velocities.push(cgmath::vec3(
+            //    rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
+            //    rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
+            //    rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
+            //));
+            petal_states.push(PetalState {
+                pose,
+                variant_index,
             });
-            petal_velocities.push(cgmath::vec3(
-                rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
-                rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
-                rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
-            ))
         }
-        petal_poses.sort_unstable_by(|a, b| a.position[2].partial_cmp(&b.position[2]).unwrap());
+        petal_states
+            .sort_unstable_by(|a, b| a.pose.position[2].partial_cmp(&b.pose.position[2]).unwrap());
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Noise generator setup");
@@ -181,27 +176,27 @@ impl GameState {
             window,
             &petal_texture_image_paths,
             petal_variants,
-            petal_variant_indices,
-            &petal_poses,
+            &petal_states,
         );
         let controller_state = ControllerState::new();
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Camera setup");
-        // Place the camera out a ways on the +z axis (out of the screen according to NDCs) so it
-        // can view objects placed around the origin when looking in the -z direction.  This way we
-        // should have a similar view of things that we orignally rendered directly in NDCs without
-        // having to change their coordinates.
-        let camera_location = cgmath::Point3::<f32>::new(0.0, 0.0, 50.0);
+        // Place the camera in the middle of the front side of the cube where the petals will be
+        // spawned and will move around within, looking toward the opposite side of that cuve (in
+        // the -z direction, silimar to how NDCs are oriented).  This gives it a good view of as
+        // many petals in the volume as possible.
+        let camera_location = cgmath::Point3::<f32>::new(0.0, 0.0, config.max_z);
         // Turn the camera 90 degrees to the left (ccw around the y axis pointing up) to face in the
         // -z direction, thus matching normalized device coordinates.  Note that the camera is
         // defined such that pan and tilt angles of 0 mean the camera is pointing the same direction
         // as the +x axis.
-        let camera_pan = Rad::<f32>(0.0); //cgmath::Rad::<f32>::turn_div_4();
+        let camera_pan = Rad::<f32>(0.0);
         let camera_tilt = Rad::<f32>(0.0);
         let camera_fov_y = Rad::<f32>::from(Deg::<f32>(60.0));
         let camera_z_near = 1.0;
-        let camera_z_far = 100.0;
+        // Set the far plane to be at the far edge of the petal simulation volume.
+        let camera_z_far = 2.0 * config.max_z;
         let camera = UprightPerspectiveCamera::new(
             camera_location,
             camera_pan,
@@ -213,20 +208,19 @@ impl GameState {
         );
 
         // -----------------------------------------------------------------------------------------
-        let wind_velocity = cgmath::vec3(
-            rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
-            rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
-            rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
-        );
+        //let wind_velocity = cgmath::vec3(
+        //    rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
+        //    rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
+        //    rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
+        //);
         Self {
+            config,
             rng,
             start_time: std::time::Instant::now(),
             graphics_state,
             controller_state,
             camera,
-            petal_poses,
-            petal_velocities,
-            wind_velocity,
+            petal_states,
             game_window_focused: false,
             mouse_look_enabled: false,
         }
@@ -302,14 +296,16 @@ impl GameState {
         }
 
         // Rotate all the petals a bit each frame to test changing the instance pose buffer
-        for (pose, velocity) in self
-            .petal_poses
-            .iter_mut()
-            .zip(self.petal_velocities.iter_mut())
-        {
-            pose.rotation = cgmath::Quaternion::from_angle_y(cgmath::Rad(0.03)) * pose.rotation;
+        for petal_state in self.petal_states.iter_mut() {
+            //for (pose, velocity) in self
+            //    .petal_poses
+            //    .iter_mut()
+            //    .zip(self.petal_velocities.iter_mut())
+            //{
+            petal_state.pose.rotation =
+                cgmath::Quaternion::from_angle_y(cgmath::Rad(0.03)) * petal_state.pose.rotation;
             //pose.position += *velocity + self.wind_velocity;
-            pose.position[1] -= FALL_SPEED;
+            petal_state.pose.position[1] -= self.config.fall_speed;
             //*velocity += cgmath::vec3(
             //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
             //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
@@ -329,37 +325,44 @@ impl GameState {
             //        f64::from(pose.position[2]),
             //        0.1 * self.start_time.elapsed().as_secs_f64(),
             //    ]) as f32;
-            if pose.position[0] < -MAX_DISPLACEMENT {
-                pose.position[0] += 2.0 * MAX_DISPLACEMENT;
-            } else if pose.position[0] > MAX_DISPLACEMENT {
-                pose.position[0] -= 2.0 * MAX_DISPLACEMENT;
+            if petal_state.pose.position[0] < -self.config.max_x {
+                petal_state.pose.position[0] += 2.0 * self.config.max_x;
+            } else if petal_state.pose.position[0] > self.config.max_x {
+                petal_state.pose.position[0] -= 2.0 * self.config.max_x;
             }
-            if pose.position[1] < -MAX_DISPLACEMENT {
-                pose.position[1] += 2.0 * MAX_DISPLACEMENT;
-            } else if pose.position[1] > MAX_DISPLACEMENT {
-                pose.position[1] -= 2.0 * MAX_DISPLACEMENT;
+            if petal_state.pose.position[1] < -self.config.max_y {
+                petal_state.pose.position[1] += 2.0 * self.config.max_y;
+            } else if petal_state.pose.position[1] > self.config.max_y {
+                petal_state.pose.position[1] -= 2.0 * self.config.max_y;
             }
-            if pose.position[2] < -MAX_DISPLACEMENT {
-                pose.position[2] += 2.0 * MAX_DISPLACEMENT;
-            } else if pose.position[2] > MAX_DISPLACEMENT {
-                pose.position[2] -= 2.0 * MAX_DISPLACEMENT;
+            if petal_state.pose.position[2] < -self.config.max_z {
+                petal_state.pose.position[2] += 2.0 * self.config.max_z;
+            } else if petal_state.pose.position[2] > self.config.max_z {
+                petal_state.pose.position[2] -= 2.0 * self.config.max_z;
             }
         }
 
+        // Update the z-ordering of the petals so that alpha blending renders correctly from back to
+        // front.
+        self.petal_states
+            .sort_unstable_by(|a, b| a.pose.position[2].partial_cmp(&b.pose.position[2]).unwrap());
+
         // Update GPU buffers according to the current game state.
-        self.graphics_state.update(&self.camera, &self.petal_poses);
+        self.graphics_state.update(&self.camera, &self.petal_states);
     }
 
     fn update_based_on_controller_state(&mut self) {
         self.camera.move_relative_to_pan_angle(
-            MOVEMENT_SPEED * self.controller_state.forward_multiplier(),
-            MOVEMENT_SPEED * self.controller_state.right_muliplier(),
-            MOVEMENT_SPEED * self.controller_state.jump_multiplier(),
+            self.config.player_movement_speed * self.controller_state.forward_multiplier(),
+            self.config.player_movement_speed * self.controller_state.right_muliplier(),
+            self.config.player_movement_speed * self.controller_state.jump_multiplier(),
         );
         if self.mouse_look_enabled {
             let (pan_delta, tilt_delta) = self.controller_state.get_pan_tilt_delta();
-            self.camera
-                .pan_and_tilt(TURN_SPEED * pan_delta, TURN_SPEED * tilt_delta)
+            self.camera.pan_and_tilt(
+                self.config.player_turn_speed * pan_delta,
+                self.config.player_turn_speed * tilt_delta,
+            )
         }
     }
 
@@ -409,4 +412,9 @@ impl From<&Pose> for crate::graphics::gpu_types::Matrix4 {
             .into(),
         }
     }
+}
+
+pub struct PetalState {
+    pub pose: Pose,
+    pub variant_index: u32,
 }
