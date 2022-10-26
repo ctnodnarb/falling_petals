@@ -12,14 +12,6 @@ use texture::Texture;
 use wgpu::util::DeviceExt;
 use winit::window::Window; // Needed for the device.create_buffer_init() function
 
-const VIDEO_WIDTH: u32 = 1920;
-const VIDEO_HEIGHT: u32 = 1080;
-const VIDEO_FRAME_RATE: u32 = 60;
-const VIDEO_PIXEL_COUNT: u32 = VIDEO_WIDTH * VIDEO_HEIGHT;
-// One u32 per pixel for Bgra8unorm
-const VIDEO_FRAME_SIZE: u64 = std::mem::size_of::<u32>() as u64 * VIDEO_PIXEL_COUNT as u64;
-const VIDEO_TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
-
 /// Cast a sized type to a read-only &[u8] byte array.  Note that the sized type probably should NOT
 /// contain any internal indirection / pointers, as this function is generally meant to be used to
 /// create a buffer-compatible view of data that needs to be sent somewhere (like the GPU) where
@@ -72,6 +64,35 @@ enum RenderTarget<'a> {
     Video,
 }
 
+pub struct VideoExportConfig {
+    pub width: u32,
+    pub height: u32,
+    pub frame_rate: u32,
+    pub pixel_count: u32,
+    pub frame_size: u64,
+    pub texture_format: wgpu::TextureFormat,
+}
+
+impl VideoExportConfig {
+    pub fn new(
+        width: u32,
+        height: u32,
+        frame_rate: u32,
+        texture_format: wgpu::TextureFormat,
+    ) -> Self {
+        let pixel_count = width * height;
+        VideoExportConfig {
+            width,
+            height,
+            frame_rate,
+            pixel_count,
+            // One u32 per pixel for Bgra8unorm
+            frame_size: std::mem::size_of::<u32>() as u64 * pixel_count as u64,
+            texture_format,
+        }
+    }
+}
+
 pub struct GraphicsState {
     // TODO: Go through all the members of this struct and determine if they all actually need to be
     // public.  Make them private where appropriate.
@@ -95,6 +116,8 @@ pub struct GraphicsState {
     pub render_pipeline: wgpu::RenderPipeline,
 
     // Rendering to video --------------------------------------------------------------------------
+    /// Config values for video export (if doing video export)
+    pub video_config: VideoExportConfig,
     /// Texture to render each video frame to
     pub video_texture: Texture,
     /// Buffer to transfer video output data from GPU to CPU
@@ -143,6 +166,7 @@ impl GraphicsState {
         petal_texture_image_paths: &[&str],
         petal_variants: Vec<gpu_types::PetalVariant>,
         petal_states: &[PetalState],
+        video_config: VideoExportConfig,
     ) -> Self {
         let size = window.inner_size();
 
@@ -214,8 +238,8 @@ impl GraphicsState {
         );
         let video_depth_texture = texture::Texture::create_depth_buffer_texture(
             &device,
-            VIDEO_WIDTH,
-            VIDEO_HEIGHT,
+            video_config.width,
+            video_config.height,
             Some("video depth texture"),
         );
 
@@ -440,7 +464,7 @@ impl GraphicsState {
         );
         let video_render_pipeline = Self::build_render_pipeline(
             &device,
-            VIDEO_TEXTURE_FORMAT,
+            video_config.texture_format,
             &shader_module,
             &texture_bind_group_layout,
             &camera_bind_group_layout,
@@ -467,14 +491,14 @@ impl GraphicsState {
         let video_texture_descriptor = wgpu::TextureDescriptor {
             label: Some("video output texture"),
             size: wgpu::Extent3d {
-                width: VIDEO_WIDTH,
-                height: VIDEO_HEIGHT,
+                width: video_config.width,
+                height: video_config.height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: VIDEO_TEXTURE_FORMAT,
+            format: video_config.texture_format,
             // COPY_SRC so we can copy the texture contents to a buffer (video_output_buffer),
             // RENDER_ATTACHMENT so that we can attach the texture to a render pass so it can be
             // rendered to.
@@ -484,7 +508,7 @@ impl GraphicsState {
         //device.create_texture(&video_texture_descriptor);
         let video_buffer_descriptor = wgpu::BufferDescriptor {
             label: Some("video output buffer"),
-            size: VIDEO_FRAME_SIZE,
+            size: video_config.frame_size,
             // COPY_DST so we can copy data into the buffer, MAP_READ so that we can read the
             // contents of the buffer from the CPU side.
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
@@ -501,7 +525,14 @@ impl GraphicsState {
         // (std::sync::mpsc::sync_channel(bound)) fixed the problem so that now my RAM usage remains
         // stable.
         let (video_thread_tx, video_thread_rx) = std::sync::mpsc::sync_channel(1);
-        let video_thread_handle = std::thread::spawn(move || video_thread_fn(video_thread_rx));
+        let video_thread_handle = std::thread::spawn(move || {
+            video_thread_fn(
+                video_thread_rx,
+                video_config.width,
+                video_config.height,
+                video_config.frame_rate,
+            )
+        });
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Finished graphics setup");
@@ -515,6 +546,7 @@ impl GraphicsState {
             depth_texture,
             render_pipeline,
 
+            video_config,
             video_texture,
             video_buffer,
             video_depth_texture,
@@ -642,8 +674,10 @@ impl GraphicsState {
                     // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT, which is 256.  But apparently this is
                     // still working even though I'm not ensuring that.
                     bytes_per_row: Some(
-                        std::num::NonZeroU32::new(VIDEO_WIDTH * std::mem::size_of::<u32>() as u32)
-                            .unwrap(),
+                        std::num::NonZeroU32::new(
+                            self.video_config.width * std::mem::size_of::<u32>() as u32,
+                        )
+                        .unwrap(),
                     ),
                     // A value for rows_per_image is only required if there are multiple images
                     // (i.e. the depth is more than 1).
@@ -651,8 +685,8 @@ impl GraphicsState {
                 },
             },
             wgpu::Extent3d {
-                width: VIDEO_WIDTH,
-                height: VIDEO_HEIGHT,
+                width: self.video_config.width,
+                height: self.video_config.height,
                 depth_or_array_layers: 1,
             },
         );
@@ -826,27 +860,40 @@ impl Drop for GraphicsState {
     }
 }
 
-fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) -> std::io::Result<()> {
+fn video_thread_fn(
+    receiver: std::sync::mpsc::Receiver<Vec<u8>>,
+    video_width: u32,
+    video_height: u32,
+    video_fps: u32,
+) -> std::io::Result<()> {
     log::debug!("Video thread starting.");
-    let size_str = format!("{}x{}", VIDEO_WIDTH, VIDEO_HEIGHT);
-    let frame_rate_str = VIDEO_FRAME_RATE.to_string();
+    let size_str = format!("{}x{}", video_width, video_height);
+    let frame_rate_str = video_fps.to_string();
     let mut ffmpeg_process = std::process::Command::new("ffmpeg")
         .args([
-            "-y",
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "bgra",
-            "-s",
-            &size_str,
-            "-r",
-            &frame_rate_str,
-            "-i",
-            "-",
-            "-c:v",
-            "libx264",
-            "-an",
-            "output_video.h264",
+            "-y",            // Overwrite output files
+            "-f",            // Format (of input)
+            "rawvideo",      //   raw (no header information)
+            "-pix_fmt",      // Pixel format
+            "bgra",          //   bgra
+            "-s",            // Size (resolution)
+            &size_str,       //
+            "-r",            // Frame rate
+            &frame_rate_str, //
+            "-i",            // Input
+            "-",             //   Coming from stdin
+            "-c:v",          // Video codec
+            "libx264",       //   The default H.264 codec
+            "-preset",       // Preset for video codec
+            "slow",          //   Slower gives better compression
+            "-crf",          // Quality setting for libx264 codec
+            "22",            //   Lower is better
+            "-pix_fmt",      // Pixel format
+            "yuv420p",       //   yuv420p needed for compatibility with many devices.
+            //"-profile:v",                   //
+            //"baseline",                     //
+            "-an",              // No audio
+            "output_video.mkv", // Output file
         ])
         .stdin(std::process::Stdio::piped())
         .spawn()?;
@@ -855,8 +902,8 @@ fn video_thread_fn(receiver: std::sync::mpsc::Receiver<Vec<u8>>) -> std::io::Res
     while let Ok(message) = receiver.recv() {
         ffmpeg_stdin.write_all(&message).unwrap();
         frame_count += 1;
-        if frame_count % VIDEO_FRAME_RATE == 0 {
-            log::debug!("Video duration = {}s", frame_count / VIDEO_FRAME_RATE);
+        if frame_count % video_fps == 0 {
+            log::debug!("Video duration = {}s", frame_count / video_fps);
         }
     }
     log::debug!("Flushing out last frames");

@@ -1,7 +1,9 @@
 mod controller;
 
 use crate::game::controller::ControllerState;
-use crate::graphics::{camera::UprightPerspectiveCamera, gpu_types::PetalVariant, GraphicsState};
+use crate::graphics::{
+    camera::UprightPerspectiveCamera, gpu_types::PetalVariant, GraphicsState, VideoExportConfig,
+};
 
 use cgmath::prelude::*;
 use cgmath::{Deg, Rad};
@@ -50,13 +52,17 @@ pub struct GameState {
     mouse_look_enabled: bool,
     // Petals
     petal_states: Vec<PetalState>,
-    //`wind_velocity: cgmath::Vector3<f32>,
+    // wind_velocity: cgmath::Vector3<f32>,
     // Random noise generator
     //noise_generator: noise::Perlin,
 }
 
 impl GameState {
-    pub fn new(window: &Window, config: GameConfig) -> Self {
+    pub fn new(
+        window: &Window,
+        config: GameConfig,
+        video_export_config: VideoExportConfig,
+    ) -> Self {
         let mut rng = rand::thread_rng();
 
         // -----------------------------------------------------------------------------------------
@@ -177,6 +183,7 @@ impl GameState {
             &petal_texture_image_paths,
             petal_variants,
             &petal_states,
+            video_export_config,
         );
         let controller_state = ControllerState::new();
 

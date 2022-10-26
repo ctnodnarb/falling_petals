@@ -39,7 +39,14 @@ pub fn run() {
         player_movement_speed: 0.1,
         player_turn_speed: Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0),
     };
-    let mut game_state = game::GameState::new(&window, game_config);
+    let video_fps = 30;
+    let video_export_config = crate::graphics::VideoExportConfig::new(
+        1920,
+        1080,
+        video_fps,
+        wgpu::TextureFormat::Bgra8Unorm,
+    );
+    let mut game_state = game::GameState::new(&window, game_config, video_export_config);
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {
