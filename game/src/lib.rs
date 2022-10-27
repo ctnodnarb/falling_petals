@@ -44,6 +44,8 @@ pub fn run() {
         movement_max_freq: 60,
         movement_amplitude_min: 0.015,
         movement_amplitude_max: 0.075,
+        min_rotation_speed: Deg::<f32>(1.0),
+        max_rotation_speed: Deg::<f32>(3.0),
     };
     let video_fps = 30;
     let video_export_config = crate::graphics::VideoExportConfig::new(

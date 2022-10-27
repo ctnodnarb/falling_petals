@@ -37,6 +37,8 @@ pub struct GameConfig {
     pub movement_max_freq: u32,
     pub movement_amplitude_min: f32,
     pub movement_amplitude_max: f32,
+    pub min_rotation_speed: Deg<f32>,
+    pub max_rotation_speed: Deg<f32>,
 }
 
 pub struct GameState {
@@ -58,9 +60,6 @@ pub struct GameState {
     mouse_look_enabled: bool,
     // Petals
     petal_states: Vec<PetalState>,
-    // wind_velocity: cgmath::Vector3<f32>,
-    // Random noise generator
-    //noise_generator: noise::Perlin,
     x_movement: Vec<f32>,
     y_movement: Vec<f32>,
     z_movement: Vec<f32>,
@@ -179,7 +178,7 @@ impl GameState {
                 ),
                 // Randomly choose a rotation (this gives a uniform distribution over all rotations
                 // in 3d space):
-                rotation: cgmath::Quaternion::new(
+                orientation: cgmath::Quaternion::new(
                     rng.sample(StandardNormal),
                     rng.sample(StandardNormal),
                     rng.sample(StandardNormal),
@@ -188,22 +187,18 @@ impl GameState {
                 .normalize(),
                 // Give the petal the right shape
                 aspect_ratio,
-                // Give the petal no rotation, represented by a quaternion of 1.0 real part and
-                // zeros in all the imaginary dimensions.  If you think of complex numbers as
-                // representing where the point 1.0 along the real axis would get rotated to if
-                // operated on by that complex number, then this is basically just saying it stays
-                // in the same place---thus no rotation.
-                //rotation: cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0),
                 scale: (config.max_scale - config.min_scale) * rng.gen::<f32>() + config.min_scale,
             };
-            //petal_velocities.push(cgmath::vec3(
-            //    rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
-            //    rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
-            //    rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
-            //));
+            let rotation = Self::generate_random_rotation(
+                Rad::<f32>::from(config.min_rotation_speed),
+                Rad::<f32>::from(config.max_rotation_speed),
+                &mut rng,
+            );
+
             petal_states.push(PetalState {
                 pose,
                 variant_index,
+                rotation,
             });
         }
         petal_states
@@ -345,38 +340,14 @@ impl GameState {
 
         // Rotate all the petals a bit each frame to test changing the instance pose buffer
         for petal_state in self.petal_states.iter_mut() {
-            //for (pose, velocity) in self
-            //    .petal_poses
-            //    .iter_mut()
-            //    .zip(self.petal_velocities.iter_mut())
-            //{
-            petal_state.pose.rotation =
-                cgmath::Quaternion::from_angle_y(cgmath::Rad(0.03)) * petal_state.pose.rotation;
-            //pose.position += *velocity + self.wind_velocity;
+            petal_state.pose.orientation = petal_state.rotation * petal_state.pose.orientation;
+
             petal_state.pose.position[1] -= self.config.fall_speed;
+
             petal_state.pose.position[0] += self.x_movement[self.movement_frame_idx as usize];
             petal_state.pose.position[1] += self.y_movement[self.movement_frame_idx as usize];
             petal_state.pose.position[2] += self.z_movement[self.movement_frame_idx as usize];
 
-            //*velocity += cgmath::vec3(
-            //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
-            //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
-            //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
-            //);
-            //self.wind_velocity += cgmath::vec3(
-            //    self.rng.gen::<f32>() * WIND_ACCELERATION * 2.0 - WIND_ACCELERATION,
-            //    self.rng.gen::<f32>() * WIND_ACCELERATION * 2.0 - WIND_ACCELERATION,
-            //    self.rng.gen::<f32>() * WIND_ACCELERATION * 2.0 - WIND_ACCELERATION,
-            //);
-            //*velocity *= VELOCITY_DECAY;
-            //self.wind_velocity *= VELOCITY_DECAY;
-            //pose.position[0] += 0.1
-            //    * self.noise_generator.get([
-            //        f64::from(pose.position[0]),
-            //        f64::from(pose.position[1]),
-            //        f64::from(pose.position[2]),
-            //        0.1 * self.start_time.elapsed().as_secs_f64(),
-            //    ]) as f32;
             if petal_state.pose.position[0] < -self.config.max_x {
                 petal_state.pose.position[0] += 2.0 * self.config.max_x;
             } else if petal_state.pose.position[0] > self.config.max_x {
@@ -429,6 +400,21 @@ impl GameState {
         self.graphics_state.resize(self.graphics_state.size)
     }
 
+    fn generate_random_rotation(
+        min_angle: Rad<f32>,
+        max_angle: Rad<f32>,
+        rng: &mut rand::rngs::ThreadRng,
+    ) -> cgmath::Quaternion<f32> {
+        let axis = cgmath::Vector3::<f32> {
+            x: rng.sample(StandardNormal),
+            y: rng.sample(StandardNormal),
+            z: rng.sample(StandardNormal),
+        }
+        .normalize();
+        let angle = min_angle + (max_angle - min_angle) * rng.gen::<f32>();
+        cgmath::Rotation3::from_axis_angle(axis, angle)
+    }
+
     fn generate_mixture_of_sines(
         length: u32,
         n_frequencies: u32,
@@ -466,7 +452,7 @@ impl GameState {
 #[derive(Debug, Copy, Clone)]
 pub struct Pose {
     position: cgmath::Vector3<f32>,
-    rotation: cgmath::Quaternion<f32>,
+    orientation: cgmath::Quaternion<f32>,
     // Aspect ratio: width / height
     aspect_ratio: f32,
     scale: f32,
@@ -476,7 +462,7 @@ impl Pose {
     fn new() -> Self {
         Pose {
             position: cgmath::vec3(0.0, 0.0, 0.0),
-            rotation: cgmath::Quaternion::one(),
+            orientation: cgmath::Quaternion::one(),
             aspect_ratio: 1.0,
             scale: 1.0,
         }
@@ -493,7 +479,7 @@ impl From<&Pose> for crate::graphics::gpu_types::Matrix4 {
     fn from(pose: &crate::game::Pose) -> Self {
         crate::graphics::gpu_types::Matrix4 {
             matrix: (cgmath::Matrix4::from_translation(pose.position)
-                * cgmath::Matrix4::from(pose.rotation)
+                * cgmath::Matrix4::from(pose.orientation)
                 //* cgmath::Matrix4::from_scale(pose.scale)
                 * cgmath::Matrix4::from_nonuniform_scale(pose.scale * pose.aspect_ratio, pose.scale, pose.scale))
             .into(),
@@ -504,4 +490,5 @@ impl From<&Pose> for crate::graphics::gpu_types::Matrix4 {
 pub struct PetalState {
     pub pose: Pose,
     pub variant_index: u32,
+    pub rotation: cgmath::Quaternion<f32>,
 }
