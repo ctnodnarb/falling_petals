@@ -34,30 +34,89 @@ unsafe fn vec_as_u8_slice<T: Sized>(array: &Vec<T>) -> &[u8] {
 // Define the vertices for a square that will be used to render each petal (after being transformed
 // by that petal's Pose).
 // TSC = Textured Square Center
+const PETAL_BEND_Z: f32 = 0.1;
 const TSC: (f32, f32, f32) = (0.0, 0.0, 0.0); //(0.3, 0.5, 0.2);
-const TEXTURED_SQUARE_VERTICES: &[PositionTextureVertex; 4] = &[
+const TEXTURED_SQUARE_VERTICES: &[PositionTextureVertex; 9] = &[
     PositionTextureVertex {
-        // Upper left corner
-        position: [-1.0 + TSC.0, 1.0 + TSC.1, TSC.2],
+        // 0: 0,0 -- Upper left corner
+        position: [-1.0 + TSC.0, 1.0 + TSC.1, TSC.2 + 1.0 * PETAL_BEND_Z],
         texture_coords: [0.0, 0.0],
     },
     PositionTextureVertex {
-        // Lower left corner
-        position: [-1.0 + TSC.0, -1.0 + TSC.1, TSC.2],
+        // 1: 1,0 -- Top middle
+        position: [0.0 + TSC.0, 1.0 + TSC.1, TSC.2 + 0.2 * PETAL_BEND_Z],
+        texture_coords: [0.5, 0.0],
+    },
+    PositionTextureVertex {
+        // 2: 2,0 -- Upper right corner
+        position: [1.0 + TSC.0, 1.0 + TSC.1, TSC.2 + -0.6 * PETAL_BEND_Z],
+        texture_coords: [1.0, 0.0],
+    },
+    PositionTextureVertex {
+        // 3: 0,1 -- Left middle
+        position: [-1.0 + TSC.0, 0.0 + TSC.1, TSC.2 + -0.1 * PETAL_BEND_Z],
+        texture_coords: [0.0, 0.5],
+    },
+    PositionTextureVertex {
+        // 4: 1,1 -- Middle middle
+        position: [0.0 + TSC.0, 0.0 + TSC.1, TSC.2 + 0.0 * PETAL_BEND_Z],
+        texture_coords: [0.5, 0.5],
+    },
+    PositionTextureVertex {
+        // 5: 0,1 -- Middle middle
+        position: [1.0 + TSC.0, 0.0 + TSC.1, TSC.2 + -0.2 * PETAL_BEND_Z],
+        texture_coords: [1.0, 0.5],
+    },
+    PositionTextureVertex {
+        // 6: 0,2 -- Lower left corner
+        position: [-1.0 + TSC.0, -1.0 + TSC.1, TSC.2 + -1.0 * PETAL_BEND_Z],
         texture_coords: [0.0, 1.0],
     },
     PositionTextureVertex {
-        // Lower right corner
-        position: [1.0 + TSC.0, -1.0 + TSC.1, TSC.2],
-        texture_coords: [1.0, 1.0],
+        // 7: 0,1 -- Middle middle
+        position: [0.0 + TSC.0, -1.0 + TSC.1, TSC.2 + 0.3 * PETAL_BEND_Z],
+        texture_coords: [0.5, 1.0],
     },
     PositionTextureVertex {
-        // Upper right corner
-        position: [1.0 + TSC.0, 1.0 + TSC.1, TSC.2],
-        texture_coords: [1.0, 0.0],
+        // 8: 2,2 -- Lower right corner
+        position: [1.0 + TSC.0, -1.0 + TSC.1, TSC.2 + 0.7 * PETAL_BEND_Z],
+        texture_coords: [1.0, 1.0],
     },
 ];
-const TEXTURED_SQUARE_INDICES: &[u16; 6] = &[0, 1, 2, 0, 2, 3];
+const TEXTURED_SQUARE_INDICES: &[u16; 24] = &[
+    0, 4, 1, //
+    1, 4, 2, //
+    2, 4, 5, //
+    5, 4, 8, //
+    8, 4, 7, //
+    7, 4, 6, //
+    6, 4, 3, //
+    3, 4, 0, //
+];
+//const TSC: (f32, f32, f32) = (0.0, 0.0, 0.0); //(0.3, 0.5, 0.2);
+//const TEXTURED_SQUARE_VERTICES: &[PositionTextureVertex; 4] = &[
+//    PositionTextureVertex {
+//        // Upper left corner
+//        position: [-1.0 + TSC.0, 1.0 + TSC.1, TSC.2 + PETAL_BEND_Z],
+//        texture_coords: [0.0, 0.0],
+//    },
+//    PositionTextureVertex {
+//        // Lower left corner
+//        position: [-1.0 + TSC.0, -1.0 + TSC.1, TSC.2 - PETAL_BEND_Z],
+//        texture_coords: [0.0, 1.0],
+//    },
+//    PositionTextureVertex {
+//        // Lower right corner
+//        position: [1.0 + TSC.0, -1.0 + TSC.1, TSC.2 + PETAL_BEND_Z],
+//        texture_coords: [1.0, 1.0],
+//    },
+//    PositionTextureVertex {
+//        // Upper right corner
+//        position: [1.0 + TSC.0, 1.0 + TSC.1, TSC.2 - PETAL_BEND_Z],
+//        texture_coords: [1.0, 0.0],
+//    },
+//];
+//const TEXTURED_SQUARE_INDICES: &[u16; 6] = &[0, 1, 2, 0, 2, 3];
 
 enum RenderTarget<'a> {
     Screen(&'a wgpu::TextureView),
