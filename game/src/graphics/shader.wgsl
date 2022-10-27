@@ -202,7 +202,7 @@ fn fs_textured_vertex(in: PositionTextureIndexFragmentInput) -> @location(0) vec
     let variant_idx = texture_pipeline_petal_variant_indices.petal_variant_indices[idx / 4][idx % 4];
     let tex_idx = texture_pipeline_petal_variants.petal_variants[variant_idx].petal_texture_index;
     let tex_bounds = texture_pipeline_petal_variants.petal_variants[variant_idx].texture_u_v_width_height;
-    let texture_sample = textureSample(
+    var texture_sample = textureSample(
         texture_pipeline_petal_textures[tex_idx], 
         texture_pipeline_petal_samplers[tex_idx], 
         vec2<f32>(
@@ -210,6 +210,14 @@ fn fs_textured_vertex(in: PositionTextureIndexFragmentInput) -> @location(0) vec
             tex_bounds[1] + in.texture_coords[1] * tex_bounds[3],
         )
     );
+    // Fade pixels out as they approach eithet the near or far clipping planes.
+    if in.screen_position[2] < 0.4 {
+        let alpha = max(0.0, in.screen_position[2] / 0.4);
+        texture_sample = texture_sample * alpha;
+    } else if in.screen_position[2] > 0.9985 {
+        let alpha = (1.0 - in.screen_position[2]) / 0.0015;
+        texture_sample = texture_sample * alpha;
+    }
     if texture_sample[3] < 0.01{
         discard;
     } else {

@@ -22,6 +22,8 @@ use winit::window::Window;
 /// of petals that can be rendered is 16384.
 pub struct GameConfig {
     pub n_petals: usize,
+    pub min_scale: f32,
+    pub max_scale: f32,
     pub fall_speed: f32,
     pub camera_near: f32,
     pub camera_far: f32,
@@ -192,7 +194,7 @@ impl GameState {
                 // operated on by that complex number, then this is basically just saying it stays
                 // in the same place---thus no rotation.
                 //rotation: cgmath::Quaternion::new(1.0, 0.0, 0.0, 0.0),
-                scale: 1.5 * rng.gen::<f32>() + 0.5,
+                scale: (config.max_scale - config.min_scale) * rng.gen::<f32>() + config.min_scale,
             };
             //petal_velocities.push(cgmath::vec3(
             //    rng.gen::<f32>() * 10.0 * PER_PETAL_ACCELERATION - 5.0 * PER_PETAL_ACCELERATION,
