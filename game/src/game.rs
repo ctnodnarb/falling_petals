@@ -31,6 +31,10 @@ pub struct GameConfig {
     pub max_z: f32,
     pub player_movement_speed: f32,
     pub player_turn_speed: Rad<f32>,
+    pub movement_period: u32,
+    pub movement_max_freq: u32,
+    pub movement_amplitude_min: f32,
+    pub movement_amplitude_max: f32,
 }
 
 pub struct GameState {
@@ -55,6 +59,11 @@ pub struct GameState {
     // wind_velocity: cgmath::Vector3<f32>,
     // Random noise generator
     //noise_generator: noise::Perlin,
+    x_movement: Vec<f32>,
+    y_movement: Vec<f32>,
+    z_movement: Vec<f32>,
+    movement_frame_idx: u32,
+    movement_period: u32,
 }
 
 impl GameState {
@@ -64,6 +73,31 @@ impl GameState {
         video_export_config: VideoExportConfig,
     ) -> Self {
         let mut rng = rand::thread_rng();
+
+        // -----------------------------------------------------------------------------------------
+        log::debug!("Computing petal movement");
+        let movement_period = config.movement_period * video_export_config.frame_rate;
+        let x_movement = Self::generate_mixture_of_sines(
+            movement_period,
+            config.movement_max_freq,
+            config.movement_amplitude_max,
+            config.movement_amplitude_min,
+            &mut rng,
+        );
+        let y_movement = Self::generate_mixture_of_sines(
+            movement_period,
+            config.movement_max_freq,
+            config.movement_amplitude_max,
+            config.movement_amplitude_min,
+            &mut rng,
+        );
+        let z_movement = Self::generate_mixture_of_sines(
+            movement_period,
+            config.movement_max_freq,
+            config.movement_amplitude_max,
+            config.movement_amplitude_min,
+            &mut rng,
+        );
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Petal variants setup");
@@ -230,6 +264,11 @@ impl GameState {
             petal_states,
             game_window_focused: false,
             mouse_look_enabled: false,
+            x_movement,
+            y_movement,
+            z_movement,
+            movement_frame_idx: 0,
+            movement_period,
         }
     }
 
@@ -313,6 +352,10 @@ impl GameState {
                 cgmath::Quaternion::from_angle_y(cgmath::Rad(0.03)) * petal_state.pose.rotation;
             //pose.position += *velocity + self.wind_velocity;
             petal_state.pose.position[1] -= self.config.fall_speed;
+            petal_state.pose.position[0] += self.x_movement[self.movement_frame_idx as usize];
+            petal_state.pose.position[1] += self.y_movement[self.movement_frame_idx as usize];
+            petal_state.pose.position[2] += self.z_movement[self.movement_frame_idx as usize];
+
             //*velocity += cgmath::vec3(
             //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
             //    self.rng.gen::<f32>() * PER_PETAL_ACCELERATION * 2.0 - PER_PETAL_ACCELERATION,
@@ -356,6 +399,8 @@ impl GameState {
 
         // Update GPU buffers according to the current game state.
         self.graphics_state.update(&self.camera, &self.petal_states);
+
+        self.movement_frame_idx = (self.movement_frame_idx + 1) % self.movement_period;
     }
 
     fn update_based_on_controller_state(&mut self) {
@@ -380,6 +425,39 @@ impl GameState {
     /// Attempt to reconfigure / reacquire the rendering surface using the last known window size.
     pub fn reconfigure_rendering_surface(&mut self) {
         self.graphics_state.resize(self.graphics_state.size)
+    }
+
+    fn generate_mixture_of_sines(
+        length: u32,
+        n_frequencies: u32,
+        low_freq_max_amplitude: f32,
+        high_freq_max_amplitude: f32,
+        rng: &mut rand::rngs::ThreadRng,
+    ) -> Vec<f32> {
+        let mut amplitudes_by_frequency = Vec::<f32>::with_capacity(n_frequencies as usize);
+        let mut phases_by_frequency = Vec::<f32>::with_capacity(n_frequencies as usize);
+        for freq_idx in 0..n_frequencies {
+            let max_amplitude = low_freq_max_amplitude
+                - (low_freq_max_amplitude - high_freq_max_amplitude)
+                    * (freq_idx as f32 / (n_frequencies - 1) as f32);
+            amplitudes_by_frequency.push(max_amplitude * rng.gen::<f32>());
+            phases_by_frequency.push(2.0 * std::f32::consts::PI * rng.gen::<f32>());
+        }
+        let mut values = Vec::<f32>::with_capacity(length as usize);
+        for frame_idx in 0..length {
+            let mut value = 0.0;
+            for freq_idx in 0..n_frequencies {
+                value += amplitudes_by_frequency[freq_idx as usize]
+                    * f32::sin(
+                        2.0 * std::f32::consts::PI
+                            * freq_idx as f32
+                            * (frame_idx as f32 / length as f32) as f32
+                            + phases_by_frequency[freq_idx as usize],
+                    );
+            }
+            values.push(value);
+        }
+        values
     }
 }
 

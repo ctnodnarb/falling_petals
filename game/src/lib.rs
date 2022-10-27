@@ -38,6 +38,10 @@ pub fn run() {
         max_z: 50.0,
         player_movement_speed: 0.1,
         player_turn_speed: Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0),
+        movement_period: 60 * 15,
+        movement_max_freq: 60,
+        movement_amplitude_min: 0.01,
+        movement_amplitude_max: 0.05,
     };
     let video_fps = 30;
     let video_export_config = crate::graphics::VideoExportConfig::new(

@@ -815,14 +815,25 @@ impl GraphicsState {
             sized_type_as_u8_slice(&self.camera_uniform)
         });
 
-        // Update the instance buffer with the current instance poses.
-        for (pose_matrix, petal_state) in self.petal_pose_data.iter_mut().zip(petal_states.iter()) {
+        // Update the instance buffer with the current instance poses, and update the petal variant
+        // index buffer with the current variant indices (this needs to be updated each frame if
+        // the z-sorting changes).
+        for ((pose_matrix, variant_index), petal_state) in self
+            .petal_pose_data
+            .iter_mut()
+            .zip(self.petal_variant_index_data.iter_mut())
+            .zip(petal_states.iter())
+        {
             pose_matrix.matrix = gpu_types::Matrix4::from(&petal_state.pose).matrix;
+            *variant_index = petal_state.variant_index;
         }
-
         self.queue.write_buffer(&self.petal_pose_buffer, 0, unsafe {
             vec_as_u8_slice(&self.petal_pose_data)
         });
+        self.queue
+            .write_buffer(&self.petal_variant_index_buffer, 0, unsafe {
+                vec_as_u8_slice(&self.petal_variant_index_data)
+            });
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
