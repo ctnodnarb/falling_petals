@@ -52,7 +52,7 @@ pub fn run() {
         1920,
         1080,
         video_fps,
-        wgpu::TextureFormat::Bgra8Unorm,
+        wgpu::TextureFormat::Bgra8UnormSrgb,
     );
     let mut game_state = game::GameState::new(&window, game_config, video_export_config);
 
