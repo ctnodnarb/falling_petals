@@ -290,6 +290,18 @@ impl GameState {
                 / petal_variants[variant_index as usize]
                     .texture_u_v_width_height
                     .vector[3];
+            let actual_scale = if petal_variants[variant_index as usize]
+                .petal_texture_index
+                .value
+                == 7
+            {
+                petal_variants[variant_index as usize]
+                    .texture_u_v_width_height
+                    .vector[3]
+                    / (4.0 * SP)
+            } else {
+                1.0
+            };
             let pose = Pose {
                 // Generate random petal positions in view of the camera -- in the [-1,1] x/y range
                 // covered by NDC (normalized device coordinates).
@@ -309,7 +321,8 @@ impl GameState {
                 .normalize(),
                 // Give the petal the right shape
                 aspect_ratio,
-                scale: (config.max_scale - config.min_scale) * rng.gen::<f32>() + config.min_scale,
+                scale: actual_scale
+                    * ((config.max_scale - config.min_scale) * rng.gen::<f32>() + config.min_scale),
             };
             let rotation = Self::generate_random_rotation(
                 Rad::<f32>::from(config.min_rotation_speed),
