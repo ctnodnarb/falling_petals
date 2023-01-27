@@ -1,4 +1,4 @@
-use game::run;
+use falling_petals::run;
 
 fn main() {
     //pollster::block_on(run());

@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "game",
+    "falling_petals",
 ]
 resolver = "2"

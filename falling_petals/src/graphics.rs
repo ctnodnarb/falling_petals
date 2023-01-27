@@ -2,7 +2,7 @@ pub mod camera;
 pub mod gpu_types;
 pub mod texture;
 
-use crate::game::PetalState;
+use crate::falling_petals::PetalState;
 use gpu_types::{PositionTextureVertex, VertexBufferEntry};
 
 use camera::Camera;
@@ -859,7 +859,7 @@ impl GraphicsState {
     pub fn update(
         &mut self,
         camera: &camera::UprightPerspectiveCamera,
-        petal_states: &[crate::game::PetalState],
+        petal_states: &[crate::falling_petals::PetalState],
     ) {
         self.camera_uniform = camera.get_view_projection_matrix().into();
         // TODO: The below is the 3rd option of the 3 listed at the end of this page:

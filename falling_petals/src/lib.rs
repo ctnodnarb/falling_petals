@@ -1,6 +1,7 @@
 //mod ecs;
-mod game;
+mod falling_petals;
 mod graphics;
+mod input;
 
 use cgmath::{Deg, Rad};
 
@@ -24,7 +25,7 @@ pub fn run() {
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     // Initialize the game
-    let game_config = game::GameConfig {
+    let game_config = falling_petals::FallingPetalsConfig {
         n_petals: 7000,
         min_scale: 1.0,
         max_scale: 2.0,
@@ -54,7 +55,8 @@ pub fn run() {
         video_fps,
         wgpu::TextureFormat::Bgra8Unorm,
     );
-    let mut game_state = game::GameState::new(&window, game_config, video_export_config);
+    let mut game_state =
+        falling_petals::FallingPetalsState::new(&window, game_config, video_export_config);
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {

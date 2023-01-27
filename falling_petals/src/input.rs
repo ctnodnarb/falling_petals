@@ -12,7 +12,7 @@ const DOWN_SCANCODE: ScanCode = 57424;
 const RIGHT_SCANCODE: ScanCode = 57421;
 
 #[derive(Default, Debug)]
-pub struct ControllerState {
+pub struct InputState {
     forward_pressed: bool,
     backward_pressed: bool,
     left_pressed: bool,
@@ -23,8 +23,8 @@ pub struct ControllerState {
     tilt_delta: f32,
 }
 
-impl ControllerState {
-    pub fn new() -> ControllerState {
+impl InputState {
+    pub fn new() -> InputState {
         Self::default()
     }
 

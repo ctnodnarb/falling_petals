@@ -537,6 +537,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "falling_petals"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cgmath",
+ "env_logger",
+ "fs_extra",
+ "futures-intrusive",
+ "glob",
+ "image",
+ "log",
+ "noise",
+ "pollster",
+ "rand 0.8.5",
+ "rand_distr",
+ "toml",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "flate2"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -665,27 +686,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
 dependencies = [
  "byteorder",
-]
-
-[[package]]
-name = "game"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cgmath",
- "env_logger",
- "fs_extra",
- "futures-intrusive",
- "glob",
- "image",
- "log",
- "noise",
- "pollster",
- "rand 0.8.5",
- "rand_distr",
- "toml",
- "wgpu",
- "winit",
 ]
 
 [[package]]

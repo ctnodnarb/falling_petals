@@ -1,9 +1,7 @@
-mod controller;
-
-use crate::game::controller::ControllerState;
 use crate::graphics::{
     camera::UprightPerspectiveCamera, gpu_types::PetalVariant, GraphicsState, VideoExportConfig,
 };
+use crate::input::InputState;
 
 use cgmath::prelude::*;
 use cgmath::{Deg, Rad};
@@ -20,7 +18,7 @@ use winit::window::Window;
 /// fit 4 times as many of them into a uniform buffer (which has a max size of 64k or 65536 bytes on
 /// my GPU) than I otherwise would be able to.  With that uniform buffer size limit, the max number
 /// of petals that can be rendered is 16384.
-pub struct GameConfig {
+pub struct FallingPetalsConfig {
     pub n_petals: usize,
     pub min_scale: f32,
     pub max_scale: f32,
@@ -41,9 +39,9 @@ pub struct GameConfig {
     pub max_rotation_speed: Deg<f32>,
 }
 
-pub struct GameState {
+pub struct FallingPetalsState {
     /// Config values for the game
-    config: crate::game::GameConfig,
+    config: crate::falling_petals::FallingPetalsConfig,
     /// Random number generator for this thread
     rng: rand::rngs::ThreadRng,
     /// Game start time
@@ -52,7 +50,7 @@ pub struct GameState {
     /// GPU buffers/resources.
     graphics_state: GraphicsState,
     /// Tracks the state of the user input.
-    controller_state: ControllerState,
+    input_state: InputState,
     /// Camera used to render the world
     camera: UprightPerspectiveCamera,
     /// Used to enable / disable input and control whether or not the mouse is grabbed.
@@ -67,10 +65,10 @@ pub struct GameState {
     movement_period: u32,
 }
 
-impl GameState {
+impl FallingPetalsState {
     pub fn new(
         window: &Window,
-        config: GameConfig,
+        config: FallingPetalsConfig,
         video_export_config: VideoExportConfig,
     ) -> Self {
         let mut rng = rand::thread_rng();
@@ -103,14 +101,14 @@ impl GameState {
         // -----------------------------------------------------------------------------------------
         log::debug!("Petal variants setup");
         let petal_texture_image_paths = vec![
-            "game/res/pink_petals_long.png",
-            "game/res/pink_petal.png",
-            "game/res/pink_petals_short.png",
-            "game/res/purple_petals.png",
-            "game/res/red_petal.png",
-            "game/res/red_petals.png",
-            "game/res/rose_petals.png",
-            "game/res/PetalsArranged.png",
+            "falling_petals/res/pink_petals_long.png",
+            "falling_petals/res/pink_petal.png",
+            "falling_petals/res/pink_petals_short.png",
+            "falling_petals/res/purple_petals.png",
+            "falling_petals/res/red_petal.png",
+            "falling_petals/res/red_petals.png",
+            "falling_petals/res/rose_petals.png",
+            "falling_petals/res/PetalsArranged.png",
         ];
         // Grid spacing for PetalsArranged.png
         const SP: f32 = 128.0 / 8192.0;
@@ -338,7 +336,7 @@ impl GameState {
             &petal_states,
             video_export_config,
         );
-        let controller_state = ControllerState::new();
+        let input_state = InputState::new();
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Camera setup");
@@ -378,7 +376,7 @@ impl GameState {
             rng,
             start_time: std::time::Instant::now(),
             graphics_state,
-            controller_state,
+            input_state,
             camera,
             petal_states,
             game_window_focused: false,
@@ -396,7 +394,7 @@ impl GameState {
     pub fn handle_window_event(&mut self, event: &WindowEvent, window: &Window) -> bool {
         match event {
             WindowEvent::KeyboardInput { input, .. } => {
-                self.controller_state.handle_keyboard_event(input)
+                self.input_state.handle_keyboard_event(input)
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -416,7 +414,7 @@ impl GameState {
                 }
                 // Clear any pan / tilt that has been accumulated to avoid sudden jumps in rotation
                 // when mouse look is re-enabled.
-                self.controller_state.get_pan_tilt_delta();
+                self.input_state.get_pan_tilt_delta();
                 true
             }
             WindowEvent::Focused(focused) => {
@@ -433,7 +431,7 @@ impl GameState {
                 }
                 // Clear any pan / tilt that has been accumulated to avoid sudden jumps in rotation
                 // when focus is regained.
-                self.controller_state.get_pan_tilt_delta();
+                self.input_state.get_pan_tilt_delta();
                 true
             }
             WindowEvent::Resized(physical_size) => {
@@ -450,14 +448,14 @@ impl GameState {
 
     /// Handles the passed event if possible.
     pub fn handle_device_event(&mut self, event: &DeviceEvent) {
-        self.controller_state.handle_device_event(event);
+        self.input_state.handle_device_event(event);
     }
 
     pub fn update(&mut self) {
         // Game state update code goes here.
 
         if self.game_window_focused {
-            self.update_based_on_controller_state();
+            self.update_based_on_input_state();
         }
 
         // Rotate all the petals a bit each frame to test changing the instance pose buffer
@@ -498,14 +496,14 @@ impl GameState {
         self.movement_frame_idx = (self.movement_frame_idx + 1) % self.movement_period;
     }
 
-    fn update_based_on_controller_state(&mut self) {
+    fn update_based_on_input_state(&mut self) {
         self.camera.move_relative_to_pan_angle(
-            self.config.player_movement_speed * self.controller_state.forward_multiplier(),
-            self.config.player_movement_speed * self.controller_state.right_muliplier(),
-            self.config.player_movement_speed * self.controller_state.jump_multiplier(),
+            self.config.player_movement_speed * self.input_state.forward_multiplier(),
+            self.config.player_movement_speed * self.input_state.right_muliplier(),
+            self.config.player_movement_speed * self.input_state.jump_multiplier(),
         );
         if self.mouse_look_enabled {
-            let (pan_delta, tilt_delta) = self.controller_state.get_pan_tilt_delta();
+            let (pan_delta, tilt_delta) = self.input_state.get_pan_tilt_delta();
             self.camera.pan_and_tilt(
                 self.config.player_turn_speed * pan_delta,
                 self.config.player_turn_speed * tilt_delta,
@@ -598,7 +596,7 @@ impl Default for Pose {
 }
 
 impl From<&Pose> for crate::graphics::gpu_types::Matrix4 {
-    fn from(pose: &crate::game::Pose) -> Self {
+    fn from(pose: &crate::falling_petals::Pose) -> Self {
         crate::graphics::gpu_types::Matrix4 {
             matrix: (cgmath::Matrix4::from_translation(pose.position)
                 * cgmath::Matrix4::from(pose.orientation)
