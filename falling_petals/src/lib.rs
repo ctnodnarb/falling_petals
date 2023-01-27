@@ -11,14 +11,7 @@ use winit::{
     window::WindowBuilder,
 };
 
-// TODO:  Instead of having this be an async function, consider using block_on() from pollster more
-// like is done at the link below when requesting the device and adapter:
-// https://github.com/tomhoule/wgpu-minimal-video-rendering-example/blob/main/src/main.rs
-// Then the rest of the code would not be running within pollster's state machine (that probably
-// doesn't matter much for performance, but maybe the debug stack would be easier to read /
-// understand, and less deep).
 pub fn run() {
-    //println!("ortho: {:?}", cgmath::ortho(1.0, 2.0, 3.0, 4.0, 5.0, 6.0));
     // Window setup
     env_logger::init();
     let event_loop = EventLoop::new();
@@ -33,11 +26,15 @@ pub fn run() {
         camera_near: 1.0,
         camera_far: 100.0,
         camera_fov_y: Rad::<f32>::from(Deg::<f32>(60.0)),
-        // Fit 60fovy frustum with 100 view depth and 1920x1080 aspect ratio (needs to be >103)
+        // Set the boundaries of the rectangular prism in which the petals are rendered so that
+        // they are not visible in the view frustum (at its default location).
+        // For a 60fovy frustum with 100 view depth and 1920x1080 aspect ratio, we need max_x > 103.
         max_x: 110.0,
-        // Fit 60fovy frustum with 100 view depth (needs to be >58)
+        // For a 60fovy frustum with 100 view depth, we need max_y > 58.
         max_y: 65.0,
-        // max_z is doubled (goes negative and positive) to get the total view depth
+        // Note that max_z is doubled (goes negative and positive the same as max_x and max_y) in
+        // determining the total volume in which the petals are rendered.  So the camera's view
+        // depth gets set to double this value.
         max_z: 50.0,
         player_movement_speed: 0.5,
         player_turn_speed: Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0),

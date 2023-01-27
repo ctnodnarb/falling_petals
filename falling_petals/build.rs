@@ -1,6 +1,6 @@
 use anyhow::*;
-use fs_extra::{copy_items, dir::CopyOptions};
-use std::env;
+//use fs_extra::{copy_items, dir::CopyOptions};
+//use std::env;
 
 fn main() -> Result<()> {
     //// Instruct cargo to re-run this script if something changes in the res/ folder.
