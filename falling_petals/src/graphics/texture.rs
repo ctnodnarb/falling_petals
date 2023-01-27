@@ -45,7 +45,7 @@ impl Texture {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         // Generate a sampler to fill that field in our struct and in case we ever want to sample
         // the depth texture for some reason.  Often don't really NEED this though.
-        let sampler_label = label.map(|texture_label| format!("{} sampler", texture_label));
+        let sampler_label = label.map(|texture_label| format!("{texture_label} sampler"));
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: sampler_label.as_ref().map(|x| x as &str),
             // For texture coords outside the range, use the closest texture color on the edge of
@@ -126,7 +126,7 @@ impl Texture {
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let sampler_label = label.map(|texture_label| format!("{} sampler", texture_label));
+        let sampler_label = label.map(|texture_label| format!("{texture_label} sampler"));
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: sampler_label.as_ref().map(|label| label as &str),
             // How to handle texture coords outside the range of the texture
@@ -149,6 +149,7 @@ impl Texture {
         })
     }
 
+    #[allow(dead_code)]
     pub fn from_bytes(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -168,7 +169,7 @@ impl Texture {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler_label = texture_label
             .as_ref()
-            .map(|texture_label| format!("{} sampler", texture_label));
+            .map(|texture_label| format!("{texture_label} sampler"));
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: sampler_label.as_ref().map(|label| label as &str),
             // How to handle texture coords outside the range of the texture

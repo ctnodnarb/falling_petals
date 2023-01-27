@@ -2,7 +2,7 @@ pub mod camera;
 pub mod gpu_types;
 pub mod texture;
 
-use crate::falling_petals::PetalState;
+use crate::state::PetalState;
 use gpu_types::{PositionTextureVertex, VertexBufferEntry};
 
 use camera::Camera;
@@ -379,7 +379,7 @@ impl GraphicsState {
                     &device,
                     &queue,
                     petal_texture_image,
-                    Some(format!("Petal texture {}", idx).as_str()),
+                    Some(format!("Petal texture {idx}").as_str()),
                 )
                 .unwrap()
             })
@@ -859,7 +859,7 @@ impl GraphicsState {
     pub fn update(
         &mut self,
         camera: &camera::UprightPerspectiveCamera,
-        petal_states: &[crate::falling_petals::PetalState],
+        petal_states: &[crate::state::PetalState],
     ) {
         self.camera_uniform = camera.get_view_projection_matrix().into();
         // TODO: The below is the 3rd option of the 3 listed at the end of this page:
@@ -937,7 +937,7 @@ fn video_thread_fn(
     video_fps: u32,
 ) -> std::io::Result<()> {
     log::debug!("Video thread starting.");
-    let size_str = format!("{}x{}", video_width, video_height);
+    let size_str = format!("{video_width}x{video_height}");
     let frame_rate_str = video_fps.to_string();
     let mut ffmpeg_process = std::process::Command::new("ffmpeg")
         .args([

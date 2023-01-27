@@ -1,7 +1,8 @@
 //mod ecs;
-mod falling_petals;
+mod configuration;
 mod graphics;
 mod input;
+mod state;
 
 use cgmath::{Deg, Rad};
 
@@ -18,7 +19,7 @@ pub fn run() {
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     // Initialize the game
-    let game_config = falling_petals::FallingPetalsConfig {
+    let game_config = configuration::FallingPetalsConfig {
         n_petals: 7000,
         min_scale: 1.0,
         max_scale: 2.0,
@@ -52,8 +53,7 @@ pub fn run() {
         video_fps,
         wgpu::TextureFormat::Bgra8UnormSrgb,
     );
-    let mut game_state =
-        falling_petals::FallingPetalsState::new(&window, game_config, video_export_config);
+    let mut game_state = state::FallingPetalsState::new(&window, game_config, video_export_config);
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {
@@ -99,7 +99,7 @@ pub fn run() {
                         eprintln!("Exiting due to wgpu::SurfaceError::OutOfMemory");
                         *control_flow = ControlFlow::Exit
                     }
-                    Err(e) => eprintln!("{:?}", e),
+                    Err(e) => eprintln!("{e:?}"),
                 }
             }
             _ => {}

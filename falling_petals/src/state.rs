@@ -1,3 +1,4 @@
+use crate::configuration::FallingPetalsConfig;
 use crate::graphics::{
     camera::UprightPerspectiveCamera, gpu_types::PetalVariant, GraphicsState, VideoExportConfig,
 };
@@ -11,58 +12,30 @@ use rand_distr::StandardNormal;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
 use winit::window::Window;
 
-/// n_petals must be a multiple of 4 due to how I'm assuming on the shader side that the petal
-/// variant indexes are packed into an array of vec4<u32>s.  If it is not a multiple of 4, then the
-/// buffer size sent from the CPU will not match the expected buffer size on the shader/GPU side,
-/// which will cause a crash due to a validation error.  Packing the indexes into vec4s allows me to
-/// fit 4 times as many of them into a uniform buffer (which has a max size of 64k or 65536 bytes on
-/// my GPU) than I otherwise would be able to.  With that uniform buffer size limit, the max number
-/// of petals that can be rendered is 16384.
-pub struct FallingPetalsConfig {
-    pub n_petals: usize,
-    pub min_scale: f32,
-    pub max_scale: f32,
-    pub fall_speed: f32,
-    pub camera_near: f32,
-    pub camera_far: f32,
-    pub camera_fov_y: Rad<f32>,
-    pub max_x: f32,
-    pub max_y: f32,
-    pub max_z: f32,
-    pub player_movement_speed: f32,
-    pub player_turn_speed: Rad<f32>,
-    pub movement_period: u32,
-    pub movement_max_freq: u32,
-    pub movement_amplitude_min: f32,
-    pub movement_amplitude_max: f32,
-    pub min_rotation_speed: Deg<f32>,
-    pub max_rotation_speed: Deg<f32>,
-}
-
 pub struct FallingPetalsState {
     /// Config values for the game
-    config: crate::falling_petals::FallingPetalsConfig,
+    pub config: FallingPetalsConfig,
     /// Random number generator for this thread
-    rng: rand::rngs::ThreadRng,
+    pub rng: rand::rngs::ThreadRng,
     /// Game start time
-    start_time: std::time::Instant,
+    pub start_time: std::time::Instant,
     /// Holds handles to GPU resources and objects in a form compatible with being passed/copied to
     /// GPU buffers/resources.
-    graphics_state: GraphicsState,
+    pub graphics_state: GraphicsState,
     /// Tracks the state of the user input.
-    input_state: InputState,
+    pub input_state: InputState,
     /// Camera used to render the world
-    camera: UprightPerspectiveCamera,
+    pub camera: UprightPerspectiveCamera,
     /// Used to enable / disable input and control whether or not the mouse is grabbed.
-    game_window_focused: bool,
-    mouse_look_enabled: bool,
+    pub game_window_focused: bool,
+    pub mouse_look_enabled: bool,
     // Petals
-    petal_states: Vec<PetalState>,
-    x_movement: Vec<f32>,
-    y_movement: Vec<f32>,
-    z_movement: Vec<f32>,
-    movement_frame_idx: u32,
-    movement_period: u32,
+    pub petal_states: Vec<PetalState>,
+    pub x_movement: Vec<f32>,
+    pub y_movement: Vec<f32>,
+    pub z_movement: Vec<f32>,
+    pub movement_frame_idx: u32,
+    pub movement_period: u32,
 }
 
 impl FallingPetalsState {
@@ -572,7 +545,7 @@ impl FallingPetalsState {
                     * f32::sin(
                         2.0 * std::f32::consts::PI
                             * freq_idx as f32
-                            * (frame_idx as f32 / length as f32) as f32
+                            * (frame_idx as f32 / length as f32)
                             + phases_by_frequency[freq_idx as usize],
                     );
             }
@@ -609,7 +582,7 @@ impl Default for Pose {
 }
 
 impl From<&Pose> for crate::graphics::gpu_types::Matrix4 {
-    fn from(pose: &crate::falling_petals::Pose) -> Self {
+    fn from(pose: &crate::state::Pose) -> Self {
         crate::graphics::gpu_types::Matrix4 {
             matrix: (cgmath::Matrix4::from_translation(pose.position)
                 * cgmath::Matrix4::from(pose.orientation)

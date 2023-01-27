@@ -20,6 +20,7 @@ pub struct Matrix4 {
 }
 
 impl Matrix4 {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             matrix: cgmath::Matrix4::identity().into(),
@@ -219,6 +220,7 @@ pub struct Vector4 {
 }
 
 impl Vector4 {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             vector: cgmath::Vector4::zero().into(),
@@ -249,6 +251,7 @@ pub struct UniformU32 {
 }
 
 impl UniformU32 {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             value: 0,
