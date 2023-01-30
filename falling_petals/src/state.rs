@@ -335,9 +335,9 @@ impl FallingPetalsState {
         // -z direction, thus matching normalized device coordinates.  Note that the camera is
         // defined such that pan and tilt angles of 0 mean the camera is pointing the same direction
         // as the +x axis.
-        let camera_pan = Rad::<f32>(0.0);
-        let camera_tilt = Rad::<f32>(0.0);
-        let camera_fov_y = Rad::<f32>::from(Deg::<f32>(60.0));
+        let camera_pan = Deg::<f32>(0.0);
+        let camera_tilt = Deg::<f32>(0.0);
+        let camera_fov_y = Deg::<f32>(60.0);
         let camera_z_near = 1.0;
         // Set the far plane to be at the far edge of the petal simulation volume.
         let camera_z_far = 2.0 * config.max_z;

@@ -4,8 +4,6 @@ mod graphics;
 mod input;
 mod state;
 
-use cgmath::{Deg, Rad};
-
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -13,39 +11,48 @@ use winit::{
 };
 
 pub fn run() {
+    // Load or generate config file
+    let config_path = std::path::Path::new("config.toml");
+    let config_str;
+    if !config_path.exists() {
+        println!("No config.toml file found in current directory.");
+        println!("Generating a default config.toml file and exiting...");
+        let config = configuration::FallingPetalsConfig::default();
+        match toml::to_string(&config) {
+            Ok(serialized_config) => config_str = serialized_config,
+            Err(error) => {
+                println!("Error generating default config: {error}");
+                return;
+            }
+        }
+        if let Err(error) = std::fs::write(config_path, config_str) {
+            println!("Error writing default config.toml file: {error}");
+            return;
+        }
+        println!("Default config.toml generated.  Edit it if desired and run the program again to use it.");
+        return;
+    }
+    match std::fs::read_to_string(config_path) {
+        Ok(file_contents) => config_str = file_contents,
+        Err(error) => {
+            println!("Error reading config.toml: {error}");
+            return;
+        }
+    }
+    let config;
+    match toml::from_str(&config_str) {
+        Ok(parsed_config) => config = parsed_config,
+        Err(error) => {
+            println!("Error parsing config.toml: {error}");
+            println!("Rename or remove config.toml and rerun to generate a new config.toml with default settings.");
+            return;
+        }
+    }
+
     // Window setup
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
-
-    // Initialize the game
-    let game_config = configuration::FallingPetalsConfig {
-        n_petals: 7000,
-        min_scale: 1.0,
-        max_scale: 2.0,
-        fall_speed: 0.1,
-        camera_near: 1.0,
-        camera_far: 100.0,
-        camera_fov_y: Rad::<f32>::from(Deg::<f32>(60.0)),
-        // Set the boundaries of the rectangular prism in which the petals are rendered so that
-        // they are not visible in the view frustum (at its default location).
-        // For a 60fovy frustum with 100 view depth and 1920x1080 aspect ratio, we need max_x > 103.
-        max_x: 110.0,
-        // For a 60fovy frustum with 100 view depth, we need max_y > 58.
-        max_y: 65.0,
-        // Note that max_z is doubled (goes negative and positive the same as max_x and max_y) in
-        // determining the total volume in which the petals are rendered.  So the camera's view
-        // depth gets set to double this value.
-        max_z: 50.0,
-        player_movement_speed: 0.5,
-        player_turn_speed: Rad::<f32>(std::f32::consts::PI / 180.0 / 10.0),
-        movement_period: 60 * 15,
-        movement_max_freq: 60,
-        movement_amplitude_min: 0.015,
-        movement_amplitude_max: 0.075,
-        min_rotation_speed: Deg::<f32>(1.0),
-        max_rotation_speed: Deg::<f32>(3.0),
-    };
     let video_fps = 30;
     let video_export_config = crate::graphics::VideoExportConfig::new(
         1920,
@@ -53,7 +60,7 @@ pub fn run() {
         video_fps,
         wgpu::TextureFormat::Bgra8UnormSrgb,
     );
-    let mut game_state = state::FallingPetalsState::new(&window, game_config, video_export_config);
+    let mut game_state = state::FallingPetalsState::new(&window, config, video_export_config);
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {

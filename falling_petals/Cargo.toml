@@ -6,10 +6,6 @@
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-    # Wgpu uses an old version of the raw-window-handle crate, while the most recent version of
-    # winit uses the latest one.  As such, we have to use an older version of winit to get them to
-    # work together properly.  But wgpu has already been updated on github to use the newer version,
-    # so hopefully I can change this with the next release of wgpu?
     winit = "0.27"
     wgpu = "0.14"
     env_logger = "0.10"
@@ -17,7 +13,7 @@
     pollster = "0.2"
     #bytemuck = { version = "1.11", features = [ "derive" ] }
     anyhow = { version = "1.0", features = ["backtrace"] }
-    cgmath = "0.18"
+    cgmath = { version = "0.18", features = ["serde"] }
     noise = "0.8"
     rand = "0.8"
     rand_distr = { version = "0.4", features = ["std_math"] }
@@ -27,8 +23,8 @@
 
     [dependencies.image]
         version = "0.24"
-        # The tutorial says that the image crate uses rayon to speed up decoding with threads, but
-        # that WASM doesn't support threads.  So he disables this.  Since I'm not bothering with
+        # The wgpu tutorial says that the image crate uses rayon to speed up decoding with threads,
+        # but that WASM doesn't support threads.  So he disables this.  Since I'm not bothering with
         # deploying in a browser currently, I'll just load the defaults instead.  Thus, I commented
         # out the two lines below.
         #default-features = false

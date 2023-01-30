@@ -33,11 +33,11 @@ pub struct UprightPerspectiveCamera {
     /// Coordinate of the focal point of the camera.
     pub location: cgmath::Point3<f32>,
     /// Direction the camera is facing in the x/z (horizontal) plane, in range [0, 2*pi).
-    pub pan_angle: cgmath::Rad<f32>,
+    pub pan_angle: cgmath::Deg<f32>,
     /// Amount of tilt (up and down) of the camera, in range [-pi/2, pi/2].
-    pub tilt_angle: cgmath::Rad<f32>,
+    pub tilt_angle: cgmath::Deg<f32>,
     /// Field of view angle in the Y direction
-    pub fov_y: cgmath::Rad<f32>,
+    pub fov_y: cgmath::Deg<f32>,
     /// Aspect ratio (width / height)
     pub aspect_ratio: f32,
     /// Near clipping plane location
@@ -45,23 +45,23 @@ pub struct UprightPerspectiveCamera {
     /// Far clipping plane location
     pub z_far: f32,
     /// Maximum tilt angle allowed
-    pub max_tilt: cgmath::Rad<f32>,
+    pub max_tilt: cgmath::Deg<f32>,
     /// Minimum tilt angle allowed
-    pub min_tilt: cgmath::Rad<f32>,
+    pub min_tilt: cgmath::Deg<f32>,
 }
 
 impl Default for UprightPerspectiveCamera {
     fn default() -> Self {
         Self {
             location: (0.0, 0.0, 0.0).into(), //cgmath::Point3::<f32>::new(0.0, 0.0, 0.0),
-            pan_angle: cgmath::Rad::<f32>(0.0),
-            tilt_angle: cgmath::Rad::<f32>(0.0),
-            fov_y: cgmath::Rad::turn_div_4(),
+            pan_angle: cgmath::Deg::<f32>(0.0),
+            tilt_angle: cgmath::Deg::<f32>(0.0),
+            fov_y: cgmath::Deg::turn_div_4(),
             aspect_ratio: 1.0,
             z_near: 0.1,
             z_far: 100.0,
-            max_tilt: cgmath::Rad::turn_div_4(),
-            min_tilt: -cgmath::Rad::turn_div_4(),
+            max_tilt: cgmath::Deg::turn_div_4(),
+            min_tilt: -cgmath::Deg::turn_div_4(),
         }
     }
 }
@@ -70,9 +70,9 @@ impl Default for UprightPerspectiveCamera {
 impl UprightPerspectiveCamera {
     pub fn new(
         location: cgmath::Point3<f32>,
-        pan_angle: cgmath::Rad<f32>,
-        tilt_angle: cgmath::Rad<f32>,
-        fov_y: cgmath::Rad<f32>,
+        pan_angle: cgmath::Deg<f32>,
+        tilt_angle: cgmath::Deg<f32>,
+        fov_y: cgmath::Deg<f32>,
         aspect_ratio: f32,
         z_near: f32,
         z_far: f32,
@@ -92,10 +92,10 @@ impl UprightPerspectiveCamera {
     /// Rotates the camera horizontally (pan) and vertically (tilt).
     pub fn pan_and_tilt(
         &mut self,
-        pan_angle_change: cgmath::Rad<f32>,
-        tilt_angle_change: cgmath::Rad<f32>,
+        pan_angle_change: cgmath::Deg<f32>,
+        tilt_angle_change: cgmath::Deg<f32>,
     ) {
-        self.pan_angle = (self.pan_angle + pan_angle_change) % cgmath::Rad::full_turn();
+        self.pan_angle = (self.pan_angle + pan_angle_change) % cgmath::Deg::full_turn();
         self.tilt_angle += tilt_angle_change;
         if self.tilt_angle > self.max_tilt {
             self.tilt_angle = self.max_tilt;
