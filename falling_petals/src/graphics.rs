@@ -2,11 +2,11 @@ pub mod camera;
 pub mod gpu_types;
 pub mod texture;
 
+use crate::configuration::FallingPetalsConfig;
 use crate::state::PetalState;
-use gpu_types::{PositionTextureVertex, VertexBufferEntry};
-
 use camera::Camera;
 use cgmath::prelude::*;
+use gpu_types::{PositionTextureVertex, VertexBufferEntry};
 use std::io::Write;
 use texture::Texture;
 use wgpu::util::DeviceExt;
@@ -31,58 +31,8 @@ unsafe fn vec_as_u8_slice<T: Sized>(array: &Vec<T>) -> &[u8] {
     )
 }
 
-// Define the vertices for a square that will be used to render each petal (after being transformed
-// by that petal's Pose).
-// TSC = Textured Square Center
-const PETAL_BEND_Z: f32 = 0.1;
-const TSC: (f32, f32, f32) = (0.0, 0.0, 0.0); //(0.3, 0.5, 0.2);
-const TEXTURED_SQUARE_VERTICES: &[PositionTextureVertex; 9] = &[
-    PositionTextureVertex {
-        // 0: 0,0 -- Upper left corner
-        position: [-1.0 + TSC.0, 1.0 + TSC.1, TSC.2 + 1.0 * PETAL_BEND_Z],
-        texture_coords: [0.0, 0.0],
-    },
-    PositionTextureVertex {
-        // 1: 1,0 -- Top middle
-        position: [0.0 + TSC.0, 1.0 + TSC.1, TSC.2 + 0.2 * PETAL_BEND_Z],
-        texture_coords: [0.5, 0.0],
-    },
-    PositionTextureVertex {
-        // 2: 2,0 -- Upper right corner
-        position: [1.0 + TSC.0, 1.0 + TSC.1, TSC.2 + -0.6 * PETAL_BEND_Z],
-        texture_coords: [1.0, 0.0],
-    },
-    PositionTextureVertex {
-        // 3: 0,1 -- Left middle
-        position: [-1.0 + TSC.0, 0.0 + TSC.1, TSC.2 + -0.1 * PETAL_BEND_Z],
-        texture_coords: [0.0, 0.5],
-    },
-    PositionTextureVertex {
-        // 4: 1,1 -- Middle middle
-        position: [0.0 + TSC.0, 0.0 + TSC.1, TSC.2 + 0.0 * PETAL_BEND_Z],
-        texture_coords: [0.5, 0.5],
-    },
-    PositionTextureVertex {
-        // 5: 0,1 -- Middle middle
-        position: [1.0 + TSC.0, 0.0 + TSC.1, TSC.2 + -0.2 * PETAL_BEND_Z],
-        texture_coords: [1.0, 0.5],
-    },
-    PositionTextureVertex {
-        // 6: 0,2 -- Lower left corner
-        position: [-1.0 + TSC.0, -1.0 + TSC.1, TSC.2 + -1.0 * PETAL_BEND_Z],
-        texture_coords: [0.0, 1.0],
-    },
-    PositionTextureVertex {
-        // 7: 0,1 -- Middle middle
-        position: [0.0 + TSC.0, -1.0 + TSC.1, TSC.2 + 0.3 * PETAL_BEND_Z],
-        texture_coords: [0.5, 1.0],
-    },
-    PositionTextureVertex {
-        // 8: 2,2 -- Lower right corner
-        position: [1.0 + TSC.0, -1.0 + TSC.1, TSC.2 + 0.7 * PETAL_BEND_Z],
-        texture_coords: [1.0, 1.0],
-    },
-];
+/// Index list that defines the tesselation of the 3x3 grid of vertices used to
+/// render each petal.  In this case, all triangles share the center vertex.
 const TEXTURED_SQUARE_INDICES: &[u16; 24] = &[
     0, 4, 1, //
     1, 4, 2, //
@@ -93,30 +43,6 @@ const TEXTURED_SQUARE_INDICES: &[u16; 24] = &[
     6, 4, 3, //
     3, 4, 0, //
 ];
-//const TSC: (f32, f32, f32) = (0.0, 0.0, 0.0); //(0.3, 0.5, 0.2);
-//const TEXTURED_SQUARE_VERTICES: &[PositionTextureVertex; 4] = &[
-//    PositionTextureVertex {
-//        // Upper left corner
-//        position: [-1.0 + TSC.0, 1.0 + TSC.1, TSC.2 + PETAL_BEND_Z],
-//        texture_coords: [0.0, 0.0],
-//    },
-//    PositionTextureVertex {
-//        // Lower left corner
-//        position: [-1.0 + TSC.0, -1.0 + TSC.1, TSC.2 - PETAL_BEND_Z],
-//        texture_coords: [0.0, 1.0],
-//    },
-//    PositionTextureVertex {
-//        // Lower right corner
-//        position: [1.0 + TSC.0, -1.0 + TSC.1, TSC.2 + PETAL_BEND_Z],
-//        texture_coords: [1.0, 1.0],
-//    },
-//    PositionTextureVertex {
-//        // Upper right corner
-//        position: [1.0 + TSC.0, 1.0 + TSC.1, TSC.2 - PETAL_BEND_Z],
-//        texture_coords: [1.0, 0.0],
-//    },
-//];
-//const TEXTURED_SQUARE_INDICES: &[u16; 6] = &[0, 1, 2, 0, 2, 3];
 
 enum RenderTarget<'a> {
     Screen(&'a wgpu::TextureView),
@@ -203,6 +129,7 @@ pub struct GraphicsState {
     pub camera_bind_group: wgpu::BindGroup,
 
     // Textured square used to draw petals
+    pub textured_square_vertices: [PositionTextureVertex; 9],
     pub textured_square_vertex_buffer: wgpu::Buffer,
     pub textured_square_index_buffer: wgpu::Buffer,
     pub n_textured_square_indices: u32,
@@ -232,6 +159,7 @@ impl GraphicsState {
         petal_texture_image_paths: &[&str],
         petal_variants: Vec<gpu_types::PetalVariant>,
         petal_states: &[PetalState],
+        petal_config: &FallingPetalsConfig,
         video_config: VideoExportConfig,
     ) -> Self {
         let size = window.inner_size();
@@ -538,12 +466,65 @@ impl GraphicsState {
             &camera_bind_group_layout,
         );
 
+        // --- Set up vertices used to render each petal -------------------------------------------
+        // Apply the petal bend offsets (scaled by their multiplier) to the z coordinates.
+        let offsets = petal_config
+            .petal_bend_vertex_offsets
+            .map(|offset| offset * petal_config.petal_bend_vertex_offset_multiplier);
+        let textured_square_vertices = [
+            PositionTextureVertex {
+                // 0: 0,0 -- Upper left corner
+                position: [-1.0, 1.0, offsets[0]],
+                texture_coords: [0.0, 0.0],
+            },
+            PositionTextureVertex {
+                // 1: 1,0 -- Top middle
+                position: [0.0, 1.0, offsets[1]],
+                texture_coords: [0.5, 0.0],
+            },
+            PositionTextureVertex {
+                // 2: 2,0 -- Upper right corner
+                position: [1.0, 1.0, offsets[2]],
+                texture_coords: [1.0, 0.0],
+            },
+            PositionTextureVertex {
+                // 3: 0,1 -- Left middle
+                position: [-1.0, 0.0, offsets[3]],
+                texture_coords: [0.0, 0.5],
+            },
+            PositionTextureVertex {
+                // 4: 1,1 -- Middle middle
+                position: [0.0, 0.0, offsets[4]],
+                texture_coords: [0.5, 0.5],
+            },
+            PositionTextureVertex {
+                // 5: 0,1 -- Middle middle
+                position: [1.0, 0.0, offsets[5]],
+                texture_coords: [1.0, 0.5],
+            },
+            PositionTextureVertex {
+                // 6: 0,2 -- Lower left corner
+                position: [-1.0, -1.0, offsets[6]],
+                texture_coords: [0.0, 1.0],
+            },
+            PositionTextureVertex {
+                // 7: 0,1 -- Middle middle
+                position: [0.0, -1.0, offsets[7]],
+                texture_coords: [0.5, 1.0],
+            },
+            PositionTextureVertex {
+                // 8: 2,2 -- Lower right corner
+                position: [1.0, -1.0, offsets[8]],
+                texture_coords: [1.0, 1.0],
+            },
+        ];
+
         // -----------------------------------------------------------------------------------------
         log::debug!("Textured square vertex & index buffer setup");
         let textured_square_vertex_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Textured pentagon vertex buffer"),
-                contents: unsafe { sized_type_as_u8_slice(TEXTURED_SQUARE_VERTICES) },
+                contents: unsafe { sized_type_as_u8_slice(&textured_square_vertices) },
                 usage: wgpu::BufferUsages::VERTEX,
             });
         let textured_square_index_buffer =
@@ -642,6 +623,7 @@ impl GraphicsState {
             camera_bind_group,
             camera_buffer,
 
+            textured_square_vertices,
             textured_square_vertex_buffer,
             textured_square_index_buffer,
             n_textured_square_indices,

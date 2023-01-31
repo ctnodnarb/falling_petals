@@ -320,6 +320,7 @@ impl FallingPetalsState {
             &petal_texture_image_paths,
             petal_variants,
             &petal_states,
+            &config,
             video_export_config,
         );
         let input_state = InputState::new();

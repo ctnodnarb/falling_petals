@@ -1,0 +1,90 @@
+# --- Petal parameters -----------------------------------------------------------------------------
+
+# Number of petals.  Note that this must be a multiple of 4 due to how I pack 4 petal indices into
+# each location in a uniform buffer array that gets passed to the GPU.  This packing allows me to
+# render 4x more petals than I otherwise would be able to without packing, and is necessary due to
+# the 16 byte alignment constraint and size constraint of uniform buffers.  My GPU has a max uniform
+# size of 65536 bytes, which allows me to set n_petals to a maximum value of 16384.  Using
+# additional uniform buffers or a different type of buffer would also allow more, but would
+# complicate things.
+n_petals = 7000
+# Range for scale factor randomly selected for each petal.
+min_scale = 1.0
+max_scale = 2.0
+
+# Petals are rendered with a 3x3 grid of vertices defined in the x/y plane.  The petal bend offsets
+# move each of those vertices up or down in the z direction so that the vertices are not perfectly
+# coplanar.  This improves how the petals look when they are viewed edge-on by the camera, as they
+# are no longer perfectly flat.
+#Scale factor for petal bend offsets (applied to all offsets).
+petal_bend_vertex_offset_multiplier = 0.1
+# Petal bend offsets for each of the 9 vertices used to render the petals, listed in row-major
+# order (top-left vertex first, top-middle second, and so forth).
+petal_bend_vertex_offsets = [1.0, 0.2, -0.6, -0.1, 0.0, -0.2, -1.0, 0.3, 0.7]
+
+# --- Camera parameters ----------------------------------------------------------------------------
+
+# Location of the near clipping plane of the view frustum (relative to the camera).
+camera_near = 1.0
+# Location of the far clipping plane of the view frustum (relative to the camera).
+camera_far = 100.0
+# Vertical field of view (in degrees) of the camera.
+camera_fov_y = 60.0
+
+# --- Simulation volume ----------------------------------------------------------------------------
+
+# Define the size of the volume (rectangular prism) in which the petals will move around.  Note that
+# these max values all go in both the positive and negative directions, so the actual dimensions of
+# the volume will be double these.  These default values have been selected so that the view frustum
+# will be completely contained within the volume when the camera is located at its default location
+# of (0, 0, -max_z) and facing in the +z direction.
+max_x = 110.0
+max_y = 65.0
+max_z = 50.0
+
+# --- Camera movement ------------------------------------------------------------------------------
+
+# Speed of camera movement when keyboard keys are pressed.  The keyboard controls are similar to
+# most first-person shooter games:
+#   w -- forward
+#   s -- backward
+#   a -- left
+#   d -- right
+#   <spacebar> -- up
+#   c -- down
+player_movement_speed = 0.5
+# Turn speed / sensitivity for mouse control of the camera pitch and yaw angles.  Note that mouse
+# camera movement is disabled by default when the program starts.  Right clicking will toggle it on
+# and off (capturing and releasing the mouse).
+player_turn_speed = 0.1
+
+# --- Petal movement -------------------------------------------------------------------------------
+
+# Constant fall speed added to the velocity of each petal.
+fall_speed = 0.1
+movement_period = 900
+movement_max_freq = 60
+movement_amplitude_min = 0.015
+movement_amplitude_max = 0.075
+min_rotation_speed = 1.0
+max_rotation_speed = 3.0
+
+# --- Rendering to video ---------------------------------------------------------------------------
+
+# Enables or disables rendering to video.  Note that rendering to video assumes that ffmpeg is
+# installed and is available on your PATH in your OS command-line.  If it is not, then enabling this
+# will cause the program to crash when it cannot find ffmpeg and use it to encode the rendered
+# frames to a video file.  Also note that enabling video export will probably cause the program to
+# run much slower and be a little choppy.  This is because it renders everything a second time into
+# an off-screen buffer, pipes that data to an ffmpeg process, and has to wait for ffmpeg to catch up
+# with encoding/compressing the frames before continuing to render more frames.  However, the
+# rendered video will not be choppy and should play at the specified rate.
+enable_ffmpeg_video_export = false
+# Frame rate of exported video.  Note that this does not affect the simulation or how the frames are
+# rendered.  So if you want to double the FPS of the video without also doubling the perceived speed
+# of the petal motion, you'll need to adjust all the petal movement parameters to counteract that
+# doubling in playback speed.
+video_export_fps = 30
+# Resolution of the exported video.
+video_export_width = 1920
+video_export_height = 1080

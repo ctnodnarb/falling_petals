@@ -17,15 +17,7 @@ pub fn run() {
     if !config_path.exists() {
         println!("No config.toml file found in current directory.");
         println!("Generating a default config.toml file and exiting...");
-        let config = configuration::FallingPetalsConfig::default();
-        match toml::to_string(&config) {
-            Ok(serialized_config) => config_str = serialized_config,
-            Err(error) => {
-                println!("Error generating default config: {error}");
-                return;
-            }
-        }
-        if let Err(error) = std::fs::write(config_path, config_str) {
+        if let Err(error) = std::fs::write(config_path, configuration::DEFAULT_CONFIG_STR) {
             println!("Error writing default config.toml file: {error}");
             return;
         }
