@@ -3,3 +3,17 @@ members = [
     "falling_petals",
 ]
 resolver = "2"
+
+# Enable a small amount of optimization for my code in debug mode.  This is generally discouraged
+# unless actually needed to get things to run fast enough.
+#[profile.dev]
+#opt-level = 1
+
+# Enable max optimizations for dependencies (imported packages), but not for my code.  This makes
+# debug executables run much faster, but without losing the debug information for the parts of the
+# code I have written and will be debugging.  Since imported packages should generally have been
+# tested already, it is less necessary to have all the debug symbols embedded in those parts of the
+# binary.  In particular, loading textures into wgpu takes *forever* (minutes) if these
+# optimizations are not enabled.
+[profile.dev.package."*"]
+opt-level = 3
