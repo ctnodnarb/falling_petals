@@ -124,6 +124,7 @@ enum RenderTarget<'a> {
 }
 
 pub struct VideoExportConfig {
+    pub export_enabled: bool,
     pub width: u32,
     pub height: u32,
     pub frame_rate: u32,
@@ -134,6 +135,7 @@ pub struct VideoExportConfig {
 
 impl VideoExportConfig {
     pub fn new(
+        export_enabled: bool,
         width: u32,
         height: u32,
         frame_rate: u32,
@@ -141,6 +143,7 @@ impl VideoExportConfig {
     ) -> Self {
         let pixel_count = width * height;
         VideoExportConfig {
+            export_enabled,
             width,
             height,
             frame_rate,
@@ -175,20 +178,7 @@ pub struct GraphicsState {
     pub render_pipeline: wgpu::RenderPipeline,
 
     // Rendering to video --------------------------------------------------------------------------
-    /// Config values for video export (if doing video export)
-    pub video_config: VideoExportConfig,
-    /// Texture to render each video frame to
-    pub video_texture: Texture,
-    /// Buffer to transfer video output data from GPU to CPU
-    pub video_buffer: wgpu::Buffer,
-    /// Depth buffer for redering to video
-    pub video_depth_texture: Texture,
-    /// Rendering pipeline handle for rendering to video
-    pub video_render_pipeline: wgpu::RenderPipeline,
-    /// JoinHandle for the video encoding thread
-    pub video_thread_handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
-    /// Transmitter to send frames to the video encoding thread
-    pub video_thread_tx: Option<std::sync::mpsc::SyncSender<Vec<u8>>>,
+    pub video_export_state: Option<VideoExportState>,
 
     // Instance data -------------------------------------------------------------------------------
     /// For each petal, gpu compatible data specifying its location/orientation/scale
@@ -207,7 +197,7 @@ pub struct GraphicsState {
 
     // Other ---------------------------------------------------------------------------------------
 
-    // Object to control the camera and construct the view/projection matrix.
+    // Objects to control the camera and construct the view/projection matrix.
     pub camera_uniform: gpu_types::Matrix4,
     pub camera_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
@@ -217,6 +207,23 @@ pub struct GraphicsState {
     pub textured_square_index_buffer: wgpu::Buffer,
     pub n_textured_square_indices: u32,
     pub texture_bind_group: wgpu::BindGroup,
+}
+
+pub struct VideoExportState {
+    /// Config values for video export (if doing video export)
+    pub video_config: VideoExportConfig,
+    /// Texture to render each video frame to
+    pub video_texture: Texture,
+    /// Buffer to transfer video output data from GPU to CPU
+    pub video_buffer: wgpu::Buffer,
+    /// Depth buffer for redering to video
+    pub video_depth_texture: Texture,
+    /// Rendering pipeline handle for rendering to video
+    pub video_render_pipeline: wgpu::RenderPipeline,
+    /// JoinHandle for the video encoding thread
+    pub video_thread_handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
+    /// Transmitter to send frames to the video encoding thread
+    pub video_thread_tx: Option<std::sync::mpsc::SyncSender<Vec<u8>>>,
 }
 
 impl GraphicsState {
@@ -231,9 +238,9 @@ impl GraphicsState {
 
         // -----------------------------------------------------------------------------------------
         log::debug!("WGPU setup");
-        let wgpu_instance = wgpu::Instance::new(wgpu::Backends::all());
+        let wgpu_instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
         //log::debug!("wgpu report:\n{:?}", wgpu_instance.generate_report());
-        let surface = unsafe { wgpu_instance.create_surface(window) };
+        let surface = unsafe { wgpu_instance.create_surface(window) }.unwrap();
         // The adapter represents the physical instance of your hardware.
         let gpu_adapter =
             pollster::block_on(wgpu_instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -242,8 +249,8 @@ impl GraphicsState {
                 force_fallback_adapter: false,
             }))
             .unwrap();
-        log::debug!("Adapter features:\n{:?}", gpu_adapter.features());
-        log::debug!("Adapter limits:\n{:?}", gpu_adapter.limits());
+        //log::debug!("Adapter features:\n{:?}", gpu_adapter.features());
+        //log::debug!("Adapter limits:\n{:?}", gpu_adapter.limits());
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Device and queue setup");
@@ -278,13 +285,15 @@ impl GraphicsState {
         log::debug!("Surface setup");
 
         // TODO: should I create a SwapChain here too?  Google "wgpu SwapChain".
+        let surface_capabilities = surface.get_capabilities(&gpu_adapter);
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface.get_supported_formats(&gpu_adapter)[0],
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            view_formats: surface_capabilities.formats.clone(),
         };
 
         // -----------------------------------------------------------------------------------------
@@ -404,8 +413,8 @@ impl GraphicsState {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Petal variant index buffer"),
                 contents: unsafe { vec_as_u8_slice(&petal_variant_index_data) },
-                // TODO: Do I need COPY_DST for buffers if I'm not going to write to them again after
-                // the initial initialization?
+                // TODO: Do I need COPY_DST for buffers if I'm not going to write to them again
+                // after the initial initialization?
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
         let petal_variant_data = petal_variants;
@@ -546,52 +555,67 @@ impl GraphicsState {
         let n_textured_square_indices = TEXTURED_SQUARE_INDICES.len() as u32;
 
         // -----------------------------------------------------------------------------------------
-        log::debug!("Set up video output objects");
-        let video_texture_descriptor = wgpu::TextureDescriptor {
-            label: Some("video output texture"),
-            size: wgpu::Extent3d {
-                width: video_config.width,
-                height: video_config.height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: video_config.texture_format,
-            // COPY_SRC so we can copy the texture contents to a buffer (video_output_buffer),
-            // RENDER_ATTACHMENT so that we can attach the texture to a render pass so it can be
-            // rendered to.
-            usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
-        };
-        let video_texture = Texture::from_descriptor(&device, &video_texture_descriptor);
-        //device.create_texture(&video_texture_descriptor);
-        let video_buffer_descriptor = wgpu::BufferDescriptor {
-            label: Some("video output buffer"),
-            size: video_config.frame_size,
-            // COPY_DST so we can copy data into the buffer, MAP_READ so that we can read the
-            // contents of the buffer from the CPU side.
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        };
-        let video_buffer = device.create_buffer(&video_buffer_descriptor);
+        let video_export_state = match video_config.export_enabled {
+            false => None,
+            true => {
+                log::debug!("Set up video output objects");
+                let video_texture_descriptor = wgpu::TextureDescriptor {
+                    label: Some("video output texture"),
+                    size: wgpu::Extent3d {
+                        width: video_config.width,
+                        height: video_config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: video_config.texture_format,
+                    // COPY_SRC so we can copy the texture contents to a buffer (video_output_buffer),
+                    // RENDER_ATTACHMENT so that we can attach the texture to a render pass so it can be
+                    // rendered to.
+                    usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &surface_capabilities.formats,
+                };
+                let video_texture = Texture::from_descriptor(&device, &video_texture_descriptor);
+                //device.create_texture(&video_texture_descriptor);
+                let video_buffer_descriptor = wgpu::BufferDescriptor {
+                    label: Some("video output buffer"),
+                    size: video_config.frame_size,
+                    // COPY_DST so we can copy data into the buffer, MAP_READ so that we can read the
+                    // contents of the buffer from the CPU side.
+                    usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                    mapped_at_creation: false,
+                };
+                let video_buffer = device.create_buffer(&video_buffer_descriptor);
 
-        // -----------------------------------------------------------------------------------------
-        log::debug!("Spawn video coding thread");
-        // I tried using a std::sync::mpsc::channel() here before, but it seems to accumulate more
-        // and more memory for everything I send over it without bound until my RAM fills up and
-        // things crash. Maybe this is because frames are getting rendered faster than ffmpeg can
-        // encode them?  I'm not sure.  But switching to use a bounded channel
-        // (std::sync::mpsc::sync_channel(bound)) fixed the problem so that now my RAM usage remains
-        // stable.
-        let (video_thread_tx, video_thread_rx) = std::sync::mpsc::sync_channel(1);
-        let video_thread_handle = std::thread::spawn(move || {
-            video_thread_fn(
-                video_thread_rx,
-                video_config.width,
-                video_config.height,
-                video_config.frame_rate,
-            )
-        });
+                // -----------------------------------------------------------------------------------------
+                log::debug!("Spawn video coding thread");
+                // I tried using a std::sync::mpsc::channel() here before, but it seems to accumulate more
+                // and more memory for everything I send over it without bound until my RAM fills up and
+                // things crash. Maybe this is because frames are getting rendered faster than ffmpeg can
+                // encode them?  I'm not sure.  But switching to use a bounded channel
+                // (std::sync::mpsc::sync_channel(bound)) fixed the problem so that now my RAM usage remains
+                // stable.
+                let (video_thread_tx, video_thread_rx) = std::sync::mpsc::sync_channel(1);
+                let video_thread_handle = std::thread::spawn(move || {
+                    video_thread_fn(
+                        video_thread_rx,
+                        video_config.width,
+                        video_config.height,
+                        video_config.frame_rate,
+                    )
+                });
+                Some(VideoExportState {
+                    video_config,
+                    video_texture,
+                    video_buffer,
+                    video_depth_texture,
+                    video_render_pipeline,
+                    video_thread_handle: Some(video_thread_handle),
+                    video_thread_tx: Some(video_thread_tx),
+                })
+            }
+        };
 
         // -----------------------------------------------------------------------------------------
         log::debug!("Finished graphics setup");
@@ -605,13 +629,7 @@ impl GraphicsState {
             depth_texture,
             render_pipeline,
 
-            video_config,
-            video_texture,
-            video_buffer,
-            video_depth_texture,
-            video_render_pipeline,
-            video_thread_handle: Some(video_thread_handle),
-            video_thread_tx: Some(video_thread_tx),
+            video_export_state,
 
             petal_pose_data,
             petal_pose_buffer,
@@ -721,63 +739,70 @@ impl GraphicsState {
         screen_texture.present();
 
         // Render to the video buffer --------------------------------------------------------------
-        let mut command_encoder = self.render_to_target(RenderTarget::Video)?;
-        // Copy the results to the buffer that is readable (mappable) by the CPU
-        command_encoder.copy_texture_to_buffer(
-            self.video_texture.texture.as_image_copy(),
-            wgpu::ImageCopyBuffer {
-                buffer: &self.video_buffer,
-                layout: wgpu::ImageDataLayout {
-                    offset: 0,
-                    // TODO: looks like bytes_per_row must be padded to a multiple of
-                    // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT, which is 256.  But apparently this is
-                    // still working even though I'm not ensuring that.
-                    bytes_per_row: Some(
-                        std::num::NonZeroU32::new(
-                            self.video_config.width * std::mem::size_of::<u32>() as u32,
-                        )
-                        .unwrap(),
-                    ),
-                    // A value for rows_per_image is only required if there are multiple images
-                    // (i.e. the depth is more than 1).
-                    rows_per_image: None, //Some(std::num::NonZeroU32::new(VIDEO_HEIGHT).unwrap()),
-                },
-            },
-            wgpu::Extent3d {
-                width: self.video_config.width,
-                height: self.video_config.height,
-                depth_or_array_layers: 1,
-            },
-        );
-        let video_render_submission_index =
-            self.queue.submit(std::iter::once(command_encoder.finish()));
+        let mut command_encoder;
+        if self.video_export_state.is_some() {
+            command_encoder = self.render_to_target(RenderTarget::Video)?;
+            if let Some(ref mut video_export_state) = self.video_export_state {
+                // Copy the results to the buffer that is readable (mappable) by the CPU
+                command_encoder.copy_texture_to_buffer(
+                    video_export_state.video_texture.texture.as_image_copy(),
+                    wgpu::ImageCopyBuffer {
+                        buffer: &video_export_state.video_buffer,
+                        layout: wgpu::ImageDataLayout {
+                            offset: 0,
+                            // TODO: looks like bytes_per_row must be padded to a multiple of
+                            // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT, which is 256.  But apparently this is
+                            // still working even though I'm not ensuring that.
+                            bytes_per_row: Some(
+                                std::num::NonZeroU32::new(
+                                    video_export_state.video_config.width
+                                        * std::mem::size_of::<u32>() as u32,
+                                )
+                                .unwrap(),
+                            ),
+                            // A value for rows_per_image is only required if there are multiple images
+                            // (i.e. the depth is more than 1).
+                            rows_per_image: None, //Some(std::num::NonZeroU32::new(VIDEO_HEIGHT).unwrap()),
+                        },
+                    },
+                    wgpu::Extent3d {
+                        width: video_export_state.video_config.width,
+                        height: video_export_state.video_config.height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                let video_render_submission_index =
+                    self.queue.submit(std::iter::once(command_encoder.finish()));
 
-        let buffer_slice = self.video_buffer.slice(..);
-        let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
-        // This queus up the buffer to be mapped, and then calls the FnOnce with a result passed in
-        // indicated when it has been mapped and is ready to be read from (or an error has
-        // occurred).  The oneshot channel allows me to easily wait until that FnOnce has been
-        // called before accessing the buffer's contents.
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            sender.send(result).unwrap()
-        });
-        // Wait for our submitted commands to render to the video texture to finish executing
-        self.device.poll(wgpu::Maintain::WaitForSubmissionIndex(
-            video_render_submission_index,
-        ));
-        if let Some(Ok(())) = pollster::block_on(receiver.receive()) {
-            let padded_buffer = buffer_slice.get_mapped_range();
-            let frame_pixel_data = padded_buffer.to_owned();
-            self.video_thread_tx
-                .as_ref()
-                .unwrap()
-                .send(frame_pixel_data)
-                .unwrap();
-            // Must drop any views into the buffer before we unmap it.
-            drop(padded_buffer);
-            self.video_buffer.unmap();
-        } else {
-            log::error!("Buffer failed to map");
+                let buffer_slice = video_export_state.video_buffer.slice(..);
+                let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
+                // This queues up the buffer to be mapped, and then calls the FnOnce with a result
+                // passed in indicated when it has been mapped and is ready to be read from (or an error
+                // has occurred).  The oneshot channel allows me to easily wait until that FnOnce has
+                // been called before accessing the buffer's contents.
+                buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                    sender.send(result).unwrap()
+                });
+                // Wait for our submitted commands to render to the video texture to finish executing
+                self.device.poll(wgpu::Maintain::WaitForSubmissionIndex(
+                    video_render_submission_index,
+                ));
+                if let Some(Ok(())) = pollster::block_on(receiver.receive()) {
+                    let padded_buffer = buffer_slice.get_mapped_range();
+                    let frame_pixel_data = padded_buffer.to_owned();
+                    video_export_state
+                        .video_thread_tx
+                        .as_ref()
+                        .unwrap()
+                        .send(frame_pixel_data)
+                        .unwrap();
+                    // Must drop any views into the buffer before we unmap it.
+                    drop(padded_buffer);
+                    video_export_state.video_buffer.unmap();
+                } else {
+                    log::error!("Buffer failed to map");
+                }
+            }
         }
         Ok(())
     }
@@ -790,7 +815,16 @@ impl GraphicsState {
             RenderTarget::Screen(screen_texture_view) => {
                 (screen_texture_view, &self.depth_texture.view)
             }
-            RenderTarget::Video => (&self.video_texture.view, &self.video_depth_texture.view),
+            RenderTarget::Video => {
+                if let Some(video_export_state) = self.video_export_state.as_ref() {
+                    (
+                        &video_export_state.video_texture.view,
+                        &video_export_state.video_depth_texture.view,
+                    )
+                } else {
+                    unreachable!();
+                }
+            }
         };
         let mut command_encoder =
             self.device
@@ -832,7 +866,10 @@ impl GraphicsState {
                 textured_vertex_render_pass.set_pipeline(&self.render_pipeline)
             }
             RenderTarget::Video => {
-                textured_vertex_render_pass.set_pipeline(&self.video_render_pipeline)
+                if let Some(video_export_state) = self.video_export_state.as_ref() {
+                    textured_vertex_render_pass
+                        .set_pipeline(&video_export_state.video_render_pipeline)
+                }
             }
         };
         textured_vertex_render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
@@ -920,12 +957,14 @@ impl GraphicsState {
 impl Drop for GraphicsState {
     fn drop(&mut self) {
         log::debug!("Dropping GraphicsState");
-        let tx = self.video_thread_tx.take();
-        // Close the channel so that the video coding thread will exit normally.
-        drop(tx);
-        // Wait for the video coding thread to exit normally.
-        if let Some(thread_handle) = self.video_thread_handle.take() {
-            thread_handle.join().unwrap().unwrap();
+        if let Some(mut video_export_state) = self.video_export_state.take() {
+            let tx = video_export_state.video_thread_tx.take();
+            // Close the channel so that the video coding thread will exit normally.
+            drop(tx);
+            // Wait for the video coding thread to exit normally.
+            if let Some(thread_handle) = video_export_state.video_thread_handle.take() {
+                thread_handle.join().unwrap().unwrap();
+            }
         }
     }
 }

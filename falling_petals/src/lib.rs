@@ -39,25 +39,24 @@ pub fn run() {
             return;
         }
     }
-    let config;
-    match toml::from_str(&config_str) {
-        Ok(parsed_config) => config = parsed_config,
+    let config: configuration::FallingPetalsConfig = match toml::from_str(&config_str) {
+        Ok(parsed_config) => parsed_config,
         Err(error) => {
             println!("Error parsing config.toml: {error}");
             println!("Rename or remove config.toml and rerun to generate a new config.toml with default settings.");
             return;
         }
-    }
+    };
 
     // Window setup
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let video_fps = 30;
     let video_export_config = crate::graphics::VideoExportConfig::new(
-        1920,
-        1080,
-        video_fps,
+        config.enable_ffmpeg_video_export,
+        config.video_export_width,
+        config.video_export_height,
+        config.video_export_fps,
         wgpu::TextureFormat::Bgra8UnormSrgb,
     );
     let mut game_state = state::FallingPetalsState::new(&window, config, video_export_config);

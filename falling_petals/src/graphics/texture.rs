@@ -37,7 +37,8 @@ impl Texture {
                 wgpu::TextureUsages::RENDER_ATTACHMENT
                 // Allow texture to be used as BindingType::Texture in a bind group (allow the
                 // texture to be used in shaders)
-                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
         };
         let texture = device.create_texture(&texture_descriptor);
         // Create a view into the texture (they can have multiple views, e.g. a view of a single 2d
@@ -61,7 +62,7 @@ impl Texture {
             // CompareFunction::LessEqual due to how the sampler_comparison and
             // textureSampleCompare() interacts with the texture() function in GLSL.
             compare: Some(wgpu::CompareFunction::LessEqual),
-            lod_min_clamp: -100.0,
+            lod_min_clamp: 0.0,
             lod_max_clamp: 100.0,
             ..Default::default()
         });
@@ -104,6 +105,7 @@ impl Texture {
                 wgpu::TextureUsages::TEXTURE_BINDING
                 // Allows us to copy data to the texture
                 | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
         });
         queue.write_texture(
             // Tell wgpu where and how to copy the texture data

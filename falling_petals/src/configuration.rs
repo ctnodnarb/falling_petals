@@ -28,6 +28,10 @@ pub struct FallingPetalsConfig {
     pub movement_amplitude_max: f32,
     pub min_rotation_speed: Deg<f32>,
     pub max_rotation_speed: Deg<f32>,
+    pub enable_ffmpeg_video_export: bool,
+    pub video_export_fps: u32,
+    pub video_export_width: u32,
+    pub video_export_height: u32,
 }
 
 impl Default for FallingPetalsConfig {
@@ -58,6 +62,10 @@ impl Default for FallingPetalsConfig {
             movement_amplitude_max: 0.075,
             min_rotation_speed: Deg::<f32>(1.0),
             max_rotation_speed: Deg::<f32>(3.0),
+            enable_ffmpeg_video_export: false,
+            video_export_fps: 30,
+            video_export_width: 1920,
+            video_export_height: 1080,
         }
     }
 }
