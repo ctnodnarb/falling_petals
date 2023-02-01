@@ -59,13 +59,33 @@ player_movement_speed = 0.5
 player_turn_speed = 0.1
 
 # --- Petal movement -------------------------------------------------------------------------------
+# The petals have both translational and rotational movement.  The rotational movement for each
+# petal is randomly chosen at the start of the program and is constant from then on.  The
+# translational petal movement is defined by a constant fall speed (subtracted from their y position
+# each frame) and movement speed along all 3 axes (X/Y/Z) that changes over time as defined by
+# random mixtures of sinusoids.  Petals that would exit the simultation volume (e.g. an x coordinate
+# outside of the range [-max_x, max_x]) are wrapped around to the opposite side, thus always keeping
+# all petals within the simulation volume.
 
 # Constant fall speed added to the velocity of each petal.
 fall_speed = 0.1
+# The period (in seconds) of the sinusoids, relative to their frequencies.  So, the frequency 1
+# sinusoid will go through 1 cycle in this amount of time, the frequency 2 sinusoid will go through
+# 2 cycles in this amount of time, and so forth.
 movement_period = 900
-movement_max_freq = 60
-movement_amplitude_min = 0.015
-movement_amplitude_max = 0.075
+# The number of frequencies that will be mixed together to generate each mixture of sinusoids.  This
+# also serves as a frequency cap (in conjunction with the movement_period) for how quickly the
+# movement can change.
+movement_n_frequencies = 60
+# These determine the maximum amplitude that can be chosen at each frequency when generating the
+# individual sinusoids that are mixed together.  Similar to fractal noise, it is generally good to
+# use lower max amplitudes for higher frequencies.  In this case, the max amplitude can be set for
+# the lowest and highest frequencies, and will be linearly interpolated for the frequencies in
+# between.
+movement_high_freq_max_amplitude = 0.015
+movement_low_freq_max_amplitude = 0.075
+# Defines the range of rotation speeds that can be randomly chosen for each petal at the start of
+# the program.
 min_rotation_speed = 1.0
 max_rotation_speed = 3.0
 
@@ -80,6 +100,9 @@ max_rotation_speed = 3.0
 # with encoding/compressing the frames before continuing to render more frames.  However, the
 # rendered video will not be choppy and should play at the specified rate.
 enable_ffmpeg_video_export = false
+# Name of the file the video will be exported to.  WARNING: If a file with this name already exists,
+# it will get overwritten without prompt if the program is run with video export enabled.
+video_export_file = "falling_petals.mp4"
 # Frame rate of exported video.  Note that this does not affect the simulation or how the frames are
 # rendered.  So if you want to double the FPS of the video without also doubling the perceived speed
 # of the petal motion, you'll need to adjust all the petal movement parameters to counteract that

@@ -27,12 +27,13 @@ pub struct FallingPetalsConfig {
     pub player_turn_speed: Deg<f32>,
     pub fall_speed: f32,
     pub movement_period: u32,
-    pub movement_max_freq: u32,
-    pub movement_amplitude_min: f32,
-    pub movement_amplitude_max: f32,
+    pub movement_n_frequencies: u32,
+    pub movement_high_freq_max_amplitude: f32,
+    pub movement_low_freq_max_amplitude: f32,
     pub min_rotation_speed: Deg<f32>,
     pub max_rotation_speed: Deg<f32>,
     pub enable_ffmpeg_video_export: bool,
+    pub video_export_file: String,
     pub video_export_fps: u32,
     pub video_export_width: u32,
     pub video_export_height: u32,
@@ -44,41 +45,43 @@ impl Default for FallingPetalsConfig {
             Ok(result) => result,
             Err(error) => {
                 log::error!("Error parsing the default config string:\n{error}");
-                unreachable!();
-                //Self {
-                //    n_petals: 7000,
-                //    min_scale: 1.0,
-                //    max_scale: 2.0,
-                //    petal_bend_vertex_offset_multiplier: 0.1,
-                //    petal_bend_vertex_offsets: [1.0, 0.2, -0.6, -0.1, 0.0, -0.2, -1.0, 0.3, 0.7],
-                //    camera_near: 1.0,
-                //    camera_far: 100.0,
-                //    camera_fov_y: Deg::<f32>(60.0),
-                //    // Set the boundaries of the rectangular prism in which the petals are rendered so that
-                //    // they are not visible in the view frustum (at its default location).
-                //    // For a 60fovy frustum with 100 view depth and 1920x1080 aspect ratio, we need max_x > 103.
-                //    max_x: 110.0,
-                //    // For a 60fovy frustum with 100 view depth, we need max_y > 58.
-                //    max_y: 65.0,
-                //    // Note that max_z is doubled (goes negative and positive the same as max_x and max_y) in
-                //    // determining the total volume in which the petals are rendered.  So the camera's view
-                //    // depth gets set to double this value.
-                //    max_z: 50.0,
-                //    player_movement_speed: 0.5,
-                //    player_turn_speed: Deg::<f32>(0.1),
-                //    fall_speed: 0.1,
-                //    movement_period: 60 * 15,
-                //    movement_max_freq: 60,
-                //    movement_amplitude_min: 0.015,
-                //    movement_amplitude_max: 0.075,
-                //    min_rotation_speed: Deg::<f32>(1.0),
-                //    max_rotation_speed: Deg::<f32>(3.0),
-                //    enable_ffmpeg_video_export: false,
-                //    video_export_fps: 30,
-                //    video_export_width: 1920,
-                //    video_export_height: 1080,
-                //}
+                panic!("Error parsing the default config string:\n{error}");
             }
+        }
+    }
+}
+
+pub struct VideoExportConfig {
+    pub export_enabled: bool,
+    pub output_file: String,
+    pub width: u32,
+    pub height: u32,
+    pub frame_rate: u32,
+    pub pixel_count: u32,
+    pub frame_size: u64,
+    pub texture_format: wgpu::TextureFormat,
+}
+
+impl VideoExportConfig {
+    pub fn new(
+        export_enabled: bool,
+        output_file: String,
+        width: u32,
+        height: u32,
+        frame_rate: u32,
+        texture_format: wgpu::TextureFormat,
+    ) -> Self {
+        let pixel_count = width * height;
+        VideoExportConfig {
+            export_enabled,
+            output_file,
+            width,
+            height,
+            frame_rate,
+            pixel_count,
+            // One u32 per pixel for Bgra8unorm
+            frame_size: std::mem::size_of::<u32>() as u64 * pixel_count as u64,
+            texture_format,
         }
     }
 }

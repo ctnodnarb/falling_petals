@@ -2,7 +2,7 @@ pub mod camera;
 pub mod gpu_types;
 pub mod texture;
 
-use crate::configuration::FallingPetalsConfig;
+use crate::configuration::{FallingPetalsConfig, VideoExportConfig};
 use crate::state::PetalState;
 use camera::Camera;
 use cgmath::prelude::*;
@@ -47,38 +47,6 @@ const TEXTURED_SQUARE_INDICES: &[u16; 24] = &[
 enum RenderTarget<'a> {
     Screen(&'a wgpu::TextureView),
     Video,
-}
-
-pub struct VideoExportConfig {
-    pub export_enabled: bool,
-    pub width: u32,
-    pub height: u32,
-    pub frame_rate: u32,
-    pub pixel_count: u32,
-    pub frame_size: u64,
-    pub texture_format: wgpu::TextureFormat,
-}
-
-impl VideoExportConfig {
-    pub fn new(
-        export_enabled: bool,
-        width: u32,
-        height: u32,
-        frame_rate: u32,
-        texture_format: wgpu::TextureFormat,
-    ) -> Self {
-        let pixel_count = width * height;
-        VideoExportConfig {
-            export_enabled,
-            width,
-            height,
-            frame_rate,
-            pixel_count,
-            // One u32 per pixel for Bgra8unorm
-            frame_size: std::mem::size_of::<u32>() as u64 * pixel_count as u64,
-            texture_format,
-        }
-    }
 }
 
 pub struct GraphicsState {
@@ -578,9 +546,11 @@ impl GraphicsState {
                 // (std::sync::mpsc::sync_channel(bound)) fixed the problem so that now my RAM usage remains
                 // stable.
                 let (video_thread_tx, video_thread_rx) = std::sync::mpsc::sync_channel(1);
+                let output_file_clone = video_config.output_file.clone();
                 let video_thread_handle = std::thread::spawn(move || {
                     video_thread_fn(
                         video_thread_rx,
+                        output_file_clone,
                         video_config.width,
                         video_config.height,
                         video_config.frame_rate,
@@ -953,6 +923,7 @@ impl Drop for GraphicsState {
 
 fn video_thread_fn(
     receiver: std::sync::mpsc::Receiver<Vec<u8>>,
+    output_file: String,
     video_width: u32,
     video_height: u32,
     video_fps: u32,
@@ -960,31 +931,46 @@ fn video_thread_fn(
     log::debug!("Video thread starting.");
     let size_str = format!("{video_width}x{video_height}");
     let frame_rate_str = video_fps.to_string();
+    let gop_str = (video_fps / 2).to_string();
+    // ffmpeg: https://ffmpeg.org/ffmpeg.html
+    //   input file(s) --> [demuxer] --> encoded data packets --> [decoder] --> decoded frames
+    //     --> [optional filter graph] --> filtered frames --> [encoder] --> encoded data packets
+    //     --> [muxer] --> output file(s)
+    //   Demuxers/muxers read/write encoded data packets from/to container file formats.
+    //   Command-line options generally apply to the next-specified input or output file (so order
+    //     relative to the input/output file parameters matters).
     let mut ffmpeg_process = std::process::Command::new("ffmpeg")
         .args([
-            "-y",            // Overwrite output files
-            "-f",            // Format (of input)
-            "rawvideo",      //   raw (no header information)
+            // Global options
+            "-y", // Overwrite output files if they already exist
+            // Input options
+            "-f",            // Format
+            "rawvideo",      //   raw (no header information, just raw pixel values)
             "-pix_fmt",      // Pixel format
             "bgra",          //   bgra
             "-s",            // Size (resolution)
             &size_str,       //
             "-r",            // Frame rate
             &frame_rate_str, //
-            "-i",            // Input
-            "-",             //   Coming from stdin
-            "-c:v",          // Video codec
-            "libx264",       //   The default H.264 codec
-            "-preset",       // Preset for video codec
-            "slow",          //   Slower gives better compression
-            "-crf",          // Quality setting for libx264 codec
-            "22",            //   Lower is better
-            "-pix_fmt",      // Pixel format
-            "yuv420p",       //   yuv420p needed for compatibility with many devices.
-            //"-profile:v",                   //
-            //"baseline",                     //
-            "-an",              // No audio
-            "output_video.mkv", // Output file
+            "-i",            // Input file
+            "-",             //   Input is coming from stdin
+            // Output options
+            "-c:v",       // Video codec
+            "libx264",    //   The default H.264 codec
+            "-preset",    // Preset for video codec
+            "slow",       //   Slower gives better compression
+            "-crf",       // Quality setting for libx264 codec
+            "18",         //   0=51, lower is higher quality, 23 is default
+            "-pix_fmt",   // Pixel format
+            "yuv420p",    //   yuv420p (recommended by YouTube, needed for many devices)
+            "-g",         // Set GOP size (group of pictures / # frames between keyframes)
+            &gop_str,     //   YouTube recommends a GOP of half the frame rate
+            "-bf",        // Limit consecutive B-frames (bidirectionally predicted frames)
+            "2",          //   Youtube recommends a limit of 2 consecutive B-frames.
+            "-movflags",  // Muxer flags
+            "+faststart", //   YouTube recommends MOOV atom at the beginning of the file
+            "-an",        // No audio
+            &output_file, // Output file
         ])
         .stdin(std::process::Stdio::piped())
         .spawn()?;

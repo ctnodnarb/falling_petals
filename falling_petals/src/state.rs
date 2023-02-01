@@ -1,7 +1,5 @@
-use crate::configuration::FallingPetalsConfig;
-use crate::graphics::{
-    camera::UprightPerspectiveCamera, gpu_types::PetalVariant, GraphicsState, VideoExportConfig,
-};
+use crate::configuration::{FallingPetalsConfig, VideoExportConfig};
+use crate::graphics::{camera::UprightPerspectiveCamera, gpu_types::PetalVariant, GraphicsState};
 use crate::input::InputState;
 
 use cgmath::prelude::*;
@@ -51,23 +49,23 @@ impl FallingPetalsState {
         let movement_period = config.movement_period * video_export_config.frame_rate;
         let x_movement = Self::generate_mixture_of_sines(
             movement_period,
-            config.movement_max_freq,
-            config.movement_amplitude_max,
-            config.movement_amplitude_min,
+            config.movement_n_frequencies,
+            config.movement_low_freq_max_amplitude,
+            config.movement_high_freq_max_amplitude,
             &mut rng,
         );
         let y_movement = Self::generate_mixture_of_sines(
             movement_period,
-            config.movement_max_freq,
-            config.movement_amplitude_max,
-            config.movement_amplitude_min,
+            config.movement_n_frequencies,
+            config.movement_low_freq_max_amplitude,
+            config.movement_high_freq_max_amplitude,
             &mut rng,
         );
         let z_movement = Self::generate_mixture_of_sines(
             movement_period,
-            config.movement_max_freq,
-            config.movement_amplitude_max,
-            config.movement_amplitude_min,
+            config.movement_n_frequencies,
+            config.movement_low_freq_max_amplitude,
+            config.movement_high_freq_max_amplitude,
             &mut rng,
         );
 

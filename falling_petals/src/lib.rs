@@ -44,8 +44,9 @@ pub fn run() {
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let video_export_config = crate::graphics::VideoExportConfig::new(
+    let video_export_config = crate::configuration::VideoExportConfig::new(
         config.enable_ffmpeg_video_export,
+        config.video_export_file.clone(),
         config.video_export_width,
         config.video_export_height,
         config.video_export_fps,
