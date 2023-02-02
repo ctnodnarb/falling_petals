@@ -124,7 +124,7 @@ pub struct VideoExportState {
 impl GraphicsState {
     pub fn new(
         window: &Window,
-        petal_texture_image_paths: &[&str],
+        petal_texture_image_paths: &[String],
         petal_variants: Vec<gpu_types::PetalVariant>,
         petal_states: &[PetalState],
         petal_config: &FallingPetalsConfig,
@@ -932,7 +932,7 @@ fn video_thread_fn(
     let size_str = format!("{video_width}x{video_height}");
     let frame_rate_str = video_fps.to_string();
     let gop_str = (video_fps / 2).to_string();
-    // ffmpeg: https://ffmpeg.org/ffmpeg.html
+    // Info on ffmpeg: https://ffmpeg.org/ffmpeg.html
     //   input file(s) --> [demuxer] --> encoded data packets --> [decoder] --> decoded frames
     //     --> [optional filter graph] --> filtered frames --> [encoder] --> encoded data packets
     //     --> [muxer] --> output file(s)

@@ -111,3 +111,229 @@ video_export_fps = 30
 # Resolution of the exported video.
 video_export_width = 1920
 video_export_height = 1080
+
+# --- Texture parameters ---------------------------------------------------------------------------
+
+[[petal_textures]]
+file = "falling_petals/res/PetalsArranged.png"
+# Width of a "standard" petal in this texture file, used to scale the petals in this file relative
+# to the petals in other texture files.  Since most petals were about 4 grid spaces or 512 pixels
+# wide, I set this to 512/8192 = 0.0625.
+scale = 0.0625
+# Multipliers that can be used to make it easier to enter texture coordinates below when petal
+# images are aligned within a grid in the texture file.  Set these to 1 if no scaling is desired.
+# For PetalsArranged.png, the petal images are aligned with a grid with cells that are 128x128
+# pixels.  Since the texture size is 8192x8192, I use 128/8192 = 0.015625 as the spacing value in
+# both the x and y directions.  Then I can enter the coordinate values below as integer indices into
+# that grid.
+x_multiplier = 0.015625
+y_multiplier = 0.015625
+# X location, Y location, width, and height (in scaled texture coordinates) of each patch of the
+# texture that contains a single petal image.  Texture coordinates are (0.0, 0.0) at the upper left
+# corner of the upper left pixel of the texture, and (1.0, 1.0) at the lower right corner of the
+# lower right pixel.  These values are scaled (multiplied) by the spacing parameters above to make
+# it easier to enter them as values with just a few digits.  Since the spacing parameters above
+# have been set appropriately for a 128x128 pixel grid, I can enter these values as integers 
+# specifying the grid coordinates and how many grid cells wide/tall each petal image is.
+petal_coordinates = [
+    # Col 1: 3x1
+    [0, 0, 3, 1],
+    [0, 1, 3, 1],
+    [0, 2, 3, 1],
+    [0, 3, 3, 1],
+    [0, 4, 3, 1],
+    [0, 5, 3, 1],
+    # Col 2: 6x3
+    [3, 0, 6, 3],
+    [3, 3, 6, 3],
+    [3, 6, 6, 3],
+    [3, 9, 6, 3],
+    [3, 12, 6, 3],
+    [3, 15, 6, 3],
+    [3, 18, 6, 3],
+    [3, 21, 6, 3],
+    [3, 24, 6, 3],
+    [3, 27, 6, 3],
+    [3, 30, 6, 3],
+    [3, 33, 6, 3],
+    [3, 36, 6, 3],
+    [3, 39, 6, 3],
+    # Col 3: 5x3
+    [9, 0, 5, 3],
+    [9, 3, 5, 3],
+    [9, 6, 5, 3],
+    [9, 9, 5, 3],
+    [9, 12, 5, 3],
+    [9, 15, 5, 3],
+    [9, 18, 5, 3],
+    [9, 21, 5, 3],
+    [9, 24, 5, 3],
+    [9, 27, 5, 3],
+    [9, 30, 5, 3],
+    [9, 33, 5, 3],
+    # Col 4: 4x2
+    [14, 0, 4, 2],
+    [14, 2, 4, 2],
+    [14, 4, 4, 2],
+    [14, 6, 4, 2],
+    [14, 8, 4, 2],
+    [14, 10, 4, 2],
+    [14, 12, 4, 2],
+    [14, 14, 4, 2],
+    [14, 16, 4, 2],
+    [14, 18, 4, 2],
+    [14, 20, 4, 2],
+    [14, 22, 4, 2],
+    [14, 24, 4, 2],
+    [14, 26, 4, 2],
+    # Col 5: 5x2
+    [18, 0, 5, 2],
+    [18, 2, 5, 2],
+    [18, 4, 5, 2],
+    [18, 6, 5, 2],
+    [18, 8, 5, 2],
+    [18, 10, 5, 2],
+    [18, 12, 5, 2],
+    [18, 14, 5, 2],
+    [18, 16, 5, 2],
+    [18, 18, 5, 2],
+    [18, 20, 5, 2],
+    [18, 22, 5, 2],
+    [18, 24, 5, 2],
+    [18, 26, 5, 2],
+    [18, 28, 5, 2],
+    [18, 30, 5, 2],
+    [18, 32, 5, 2],
+    [18, 34, 5, 2],
+    [18, 36, 5, 2],
+    [18, 38, 5, 2],
+    [18, 40, 5, 2],
+    [18, 42, 5, 2],
+    # Col 6: 4x3
+    [23, 0, 4, 3],
+    [23, 3, 4, 3],
+    [23, 6, 4, 3],
+    # Col 7: 5x1
+    [27, 0, 5, 1],
+    [27, 1, 5, 1],
+    [27, 2, 5, 1],
+    [27, 3, 5, 1],
+    [27, 4, 5, 1],
+    [27, 5, 5, 1],
+    # Col 8: 6x2
+    [32, 0, 6, 2],
+    [32, 2, 6, 2],
+    [32, 4, 6, 2],
+    [32, 6, 6, 2],
+    [32, 8, 6, 2],
+    [32, 10, 6, 2],
+    [32, 12, 6, 2],
+    [32, 14, 6, 2],
+    [32, 16, 6, 2],
+    [32, 18, 6, 2],
+    # Col 9: 4x1
+    [38, 0, 4, 1],
+    [38, 1, 4, 1],
+    [38, 2, 4, 1],
+    [38, 3, 4, 1],
+    [38, 4, 4, 1],
+    [38, 5, 4, 1],
+    [38, 6, 4, 1],
+    [38, 7, 4, 1],
+    [38, 8, 4, 1],
+    [38, 9, 4, 1],
+    [38, 10, 4, 1],
+    [38, 11, 4, 1],
+    [38, 12, 4, 1],
+    [38, 13, 4, 1],
+    # Col 10: 6x4
+    [42, 0, 6, 4],
+    # Col 11: 2x1
+    [48, 0, 2, 1],
+    # Col 12: 3x2
+    [50, 0, 3, 2],
+    # Col 13: 7x3
+    [53, 0, 7, 3],
+]
+
+[[petal_textures]]
+file = "falling_petals/res/pink_petals_long.png"
+scale = 1
+x_multiplier = 1
+y_multiplier = 1
+petal_coordinates = [
+    [0.000, 0.021, 0.250, 0.412],
+    [0.250, 0.021, 0.250, 0.412],
+    [0.500, 0.005, 0.253, 0.445],
+    [0.751, 0.001, 0.249, 0.458],
+    [0.000, 0.541, 0.251, 0.407],
+    [0.250, 0.532, 0.253, 0.423],
+    [0.502, 0.488, 0.253, 0.512],
+    [0.767, 0.487, 0.216, 0.513],
+]
+
+[[petal_textures]]
+file = "falling_petals/res/pink_petal.png"
+scale = 1
+x_multiplier = 1
+y_multiplier = 1
+petal_coordinates = [
+    [0.0, 0.0, 1.0, 1.0],
+]
+
+[[petal_textures]]
+file = "falling_petals/res/pink_petals_short.png"
+scale = 1
+x_multiplier = 1
+y_multiplier = 1
+petal_coordinates = [
+    [0.000, 0.000, 0.218, 0.500],
+    [0.256, 0.000, 0.223, 0.500],
+    [0.506, 0.000, 0.239, 0.500],
+    [0.765, 0.000, 0.235, 0.500],
+    [0.000, 0.500, 0.218, 0.500],
+    [0.256, 0.500, 0.223, 0.500],
+    [0.506, 0.500, 0.239, 0.500],
+    [0.765, 0.500, 0.235, 0.500],
+]
+
+[[petal_textures]]
+file = "falling_petals/res/purple_petals.png"
+scale = 1
+x_multiplier = 1
+y_multiplier = 1
+petal_coordinates = [
+    [0.000, 0.011, 0.250, 0.447],
+    [0.250, 0.000, 0.250, 0.455],
+    [0.499, 0.022, 0.237, 0.408],
+    [0.750, 0.060, 0.250, 0.373],
+    [0.000, 0.549, 0.250, 0.451],
+    [0.250, 0.551, 0.251, 0.449],
+    [0.501, 0.565, 0.251, 0.435],
+    [0.751, 0.592, 0.249, 0.381],
+]
+
+[[petal_textures]]
+file = "falling_petals/res/red_petals.png"
+scale = 1
+x_multiplier = 1
+y_multiplier = 1
+petal_coordinates = [
+    [0.000, 0.027, 0.317, 0.424],
+    [0.328, 0.000, 0.341, 0.465],
+    [0.682, 0.023, 0.305, 0.410],
+    [0.000, 0.567, 0.315, 0.421],
+    [0.346, 0.541, 0.344, 0.459],
+    [0.690, 0.504, 0.310, 0.405],
+]
+
+[[petal_textures]]
+file = "falling_petals/res/rose_petals.png"
+scale = 1
+x_multiplier = 1
+y_multiplier = 1
+petal_coordinates = [
+    [0.012, 0.032, 0.312, 0.933],
+    [0.364, 0.052, 0.284, 0.900],
+    [0.686, 0.047, 0.296, 0.896],
+]

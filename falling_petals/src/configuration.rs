@@ -15,6 +15,7 @@ pub struct FallingPetalsConfig {
     pub n_petals: usize,
     pub min_scale: f32,
     pub max_scale: f32,
+    pub petal_textures: Vec<PetalTextureConfig>,
     pub petal_bend_vertex_offset_multiplier: f32,
     pub petal_bend_vertex_offsets: [f32; 9],
     pub camera_near: f32,
@@ -49,6 +50,15 @@ impl Default for FallingPetalsConfig {
             }
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PetalTextureConfig {
+    pub file: String,
+    pub scale: f32,
+    pub x_multiplier: f32,
+    pub y_multiplier: f32,
+    pub petal_coordinates: Vec<[f32; 4]>,
 }
 
 pub struct VideoExportConfig {

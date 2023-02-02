@@ -13,7 +13,6 @@ use winit::{
 pub fn run() {
     // Load or generate config file
     let config_path = std::path::Path::new("config.toml");
-    let config_str;
     if !config_path.exists() {
         println!("No config.toml file found in current directory.");
         println!("Generating a default config.toml file and exiting...");
@@ -24,13 +23,13 @@ pub fn run() {
         println!("Default config.toml generated.  Edit it if desired and run the program again to use it.");
         return;
     }
-    match std::fs::read_to_string(config_path) {
-        Ok(file_contents) => config_str = file_contents,
+    let config_str = match std::fs::read_to_string(config_path) {
+        Ok(file_contents) => file_contents,
         Err(error) => {
             println!("Error reading config.toml: {error}");
             return;
         }
-    }
+    };
     let config: configuration::FallingPetalsConfig = match toml::from_str(&config_str) {
         Ok(parsed_config) => parsed_config,
         Err(error) => {
