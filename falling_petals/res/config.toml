@@ -22,6 +22,17 @@ petal_bend_vertex_offset_multiplier = 0.1
 # order (top-left vertex first, top-middle second, and so forth).
 petal_bend_vertex_offsets = [1.0, 0.2, -0.6, -0.1, 0.0, -0.2, -1.0, 0.3, 0.7]
 
+# --- Live rendering parameters --------------------------------------------------------------------
+
+# Whether or not to limit the live rendering frame rate.  If also rendering/exporting to a video,
+# this will not affect the frame rate of the resultant video.  However, it could slow down the
+# rendering of the video (if it could otherwise be rendered and encoded faster than the set frame
+# rate limit).
+enable_frame_rate_limit = true
+# The live rendering frame rate limit that will be used (if enabled above).  This will not affect
+# the frame rate of any exported video, which is set separately.
+frame_rate_limit = 60
+
 # --- Camera parameters ----------------------------------------------------------------------------
 
 # Location of the near clipping plane of the view frustum (relative to the camera).
@@ -68,10 +79,11 @@ player_turn_speed = 0.1
 # all petals within the simulation volume.
 
 # Constant fall speed added to the velocity of each petal.
-fall_speed = 0.1
-# The period (in seconds) of the sinusoids, relative to their frequencies.  So, the frequency 1
-# sinusoid will go through 1 cycle in this amount of time, the frequency 2 sinusoid will go through
-# 2 cycles in this amount of time, and so forth.
+fall_speed = 0.05
+# The period (in seconds, based on the video_export_fps) of the sinusoids, relative to their
+# frequencies.  So, the frequency 1 sinusoid will go through 1 cycle in this amount of time in the
+# exported video, the frequency 2 sinusoid will go through 2 cycles in this amount of time in the
+# exported video, and so forth.
 movement_period = 900
 # The number of frequencies that will be mixed together to generate each mixture of sinusoids.  This
 # also serves as a frequency cap (in conjunction with the movement_period) for how quickly the
@@ -82,12 +94,12 @@ movement_n_frequencies = 60
 # use lower max amplitudes for higher frequencies.  In this case, the max amplitude can be set for
 # the lowest and highest frequencies, and will be linearly interpolated for the frequencies in
 # between.
-movement_high_freq_max_amplitude = 0.015
-movement_low_freq_max_amplitude = 0.075
-# Defines the range of rotation speeds that can be randomly chosen for each petal at the start of
-# the program.
-min_rotation_speed = 1.0
-max_rotation_speed = 3.0
+movement_high_freq_max_amplitude = 0.0075
+movement_low_freq_max_amplitude = 0.0375
+# Defines the range of rotation speeds (in degrees per frame) that can be randomly chosen for each
+# petal at the start of the program.
+min_rotation_speed = 0.5
+max_rotation_speed = 1.5
 
 # --- Rendering to video ---------------------------------------------------------------------------
 
@@ -107,7 +119,7 @@ video_export_file = "falling_petals.mp4"
 # rendered.  So if you want to double the FPS of the video without also doubling the perceived speed
 # of the petal motion, you'll need to adjust all the petal movement parameters to counteract that
 # doubling in playback speed.
-video_export_fps = 30
+video_export_fps = 60
 # Resolution of the exported video.
 video_export_width = 1920
 video_export_height = 1080

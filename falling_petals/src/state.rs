@@ -15,8 +15,10 @@ pub struct FallingPetalsState {
     pub config: FallingPetalsConfig,
     /// Random number generator for this thread
     pub rng: rand::rngs::ThreadRng,
-    /// Game start time
-    pub start_time: std::time::Instant,
+    /// Time at which the previous state update occurred
+    pub previous_time: std::time::Instant,
+    /// Time at which the current state update occurred
+    pub current_time: std::time::Instant,
     /// Holds handles to GPU resources and objects in a form compatible with being passed/copied to
     /// GPU buffers/resources.
     pub graphics_state: GraphicsState,
@@ -196,15 +198,12 @@ impl FallingPetalsState {
         );
 
         // -----------------------------------------------------------------------------------------
-        //let wind_velocity = cgmath::vec3(
-        //    rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
-        //    rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
-        //    rng.gen::<f32>() * 10.0 * WIND_ACCELERATION - 5.0 * WIND_ACCELERATION,
-        //);
+        let start_time = std::time::Instant::now();
         Self {
             config,
             rng,
-            start_time: std::time::Instant::now(),
+            previous_time: start_time,
+            current_time: start_time,
             graphics_state,
             input_state,
             camera,
@@ -288,7 +287,7 @@ impl FallingPetalsState {
             self.update_based_on_input_state();
         }
 
-        // Rotate all the petals a bit each frame to test changing the instance pose buffer
+        // Rotate and move petals
         for petal_state in self.petal_states.iter_mut() {
             petal_state.pose.orientation = petal_state.rotation * petal_state.pose.orientation;
 
@@ -298,6 +297,8 @@ impl FallingPetalsState {
             petal_state.pose.position[1] += self.y_movement[self.movement_frame_idx as usize];
             petal_state.pose.position[2] += self.z_movement[self.movement_frame_idx as usize];
 
+            // Wrap petal locations that exit the simulation volume around so that they come back
+            // in on the opposite side.
             if petal_state.pose.position[0] < -self.config.max_x {
                 petal_state.pose.position[0] += 2.0 * self.config.max_x;
             } else if petal_state.pose.position[0] > self.config.max_x {
@@ -316,7 +317,22 @@ impl FallingPetalsState {
         }
 
         // Update the z-ordering of the petals so that alpha blending renders correctly from back to
-        // front.
+        // front.  This (mostly) avoids seeing black outlines around petals caused when a petal in
+        // front gets rendered first (thus alpha blending with the black background), and then a
+        // petal behind it (that it should have alpha blended with) gets rendered second.  I say
+        // this "mostly" alleviates that problem because it can still happen when the center of a
+        // petal is behind the center of another petal (thus making it render first), but part of
+        // the petal in back extends in front of the petal in front---thus messing up the alpha
+        // blending.  This problem can be tricky to solve, especially when there's no limit to how
+        // many petals could end up all intersecting each other.  It could probably be alleviated
+        // by enforcing a minimum separation between petals.  But it doesn't happen often enough
+        // (for the settings I'm using) for me to be too worried about it.
+        //
+        // Also note that I'm sorting by the world z coordinates, and not the z coordinates relative
+        // to the camera's view.  Thus if you move the camera to the back of the volume and turn it
+        // around to look toward the front, you'll see bad alpha blending around the edges of all
+        // the petals.  Since I don't plan to be moving the camera around, this isn't an issue and
+        // it's easier (and faster) to just sort by world coordinates.
         self.petal_states
             .sort_unstable_by(|a, b| a.pose.position[2].partial_cmp(&b.pose.position[2]).unwrap());
 

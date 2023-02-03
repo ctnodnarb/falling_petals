@@ -18,6 +18,8 @@ pub struct FallingPetalsConfig {
     pub petal_textures: Vec<PetalTextureConfig>,
     pub petal_bend_vertex_offset_multiplier: f32,
     pub petal_bend_vertex_offsets: [f32; 9],
+    pub enable_frame_rate_limit: bool,
+    pub frame_rate_limit: u32,
     pub camera_near: f32,
     pub camera_far: f32,
     pub camera_fov_y: Deg<f32>,
