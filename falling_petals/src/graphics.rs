@@ -301,10 +301,17 @@ impl GraphicsState {
             contents: unsafe { vec_as_u8_slice(&petal_pose_data) },
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
-        let petal_variant_index_data = petal_states
+        let mut petal_variant_index_data = petal_states
             .iter()
             .map(|state| state.variant_index)
             .collect::<Vec<_>>();
+        // Pad the buffer out so that its size is a multiple of 16 bytes, and is thus compatible
+        // with the 16 byte alignment requirement for uniform buffers.  The extra zeros tacked on
+        // the end as padding will get transferred to the GPU each frame, but will never be read.
+        while petal_variant_index_data.len() % 4 != 0 {
+            log::debug!("Adding a byte of padding onto petal_variant_index_data (for alignment).");
+            petal_variant_index_data.push(0);
+        }
         let petal_variant_index_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Petal variant index buffer"),

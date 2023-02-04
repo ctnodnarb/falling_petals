@@ -1,12 +1,9 @@
 # --- Petal parameters -----------------------------------------------------------------------------
 
-# Number of petals.  Note that this must be a multiple of 4 due to how I pack 4 petal indices into
-# each location in a uniform buffer array that gets passed to the GPU.  This packing allows me to
-# render 4x more petals than I otherwise would be able to without packing, and is necessary due to
-# the 16 byte alignment constraint and size constraint of uniform buffers.  My GPU has a max uniform
-# size of 65536 bytes, which allows me to set n_petals to a maximum value of 16384.  Using
-# additional uniform buffers or a different type of buffer would also allow more, but would
-# complicate things.
+# Number of petals.  Note that since I pass a u32 index for each petal into the shader via a uniform
+# buffer, n_petals cannot be set higher than 1/4 the maximum size (in bytes) of a uniform buffer on
+# your GPU.  Doing so will cause the program to crash when it fails to set up the uniform buffer.
+# For my GPU, the cap is 65kB (65536 bytes), so the highest I can set n_petals is 16384.
 n_petals = 7000
 # Range for scale factor randomly selected for each petal.
 min_scale = 1.0
