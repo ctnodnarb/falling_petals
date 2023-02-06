@@ -4,10 +4,11 @@ This code renders thousands of marigold petals falling and blowing around.  It w
 a visualization that was projected onto a building for a Day of the Dead event.  If you have
 [ffmpeg](https://ffmpeg.org/) installed and available on your computer's PATH, it can also render
 each frame to an off-screen buffer (with the desired resolution) and pipe it to ffmpeg to be encoded
-into a video file.  A sample video of its output is available on [YouTube](https://youtu.be/ap0XRhDKJp4).
+into a video file.  A sample video of its output is available on
+[YouTube](https://youtu.be/ap0XRhDKJp4).
 
-When the program runs, it will look for a `config.toml` file from which to load various settings.  If
-this config file does not exist, it will generate a default one (containing comments explaining
+When the program runs, it will look for a `config.toml` file from which to load various settings.
+If this config file does not exist, it will generate a default one (containing comments explaining
 what the various settings are) and exit.  You can then modify the config file if desired, and run
 the program again.
 
@@ -24,10 +25,16 @@ possible.
 
 ## Camera movement controls
 
-The camera is intended to remain stationary while generating the final visualization.  However, I included controls to move it around as that can be very helpful while debugging and adjusting how things are rendered.  The controls are similar to those used in first-person shooter games, and are as follows:
+The camera is intended to remain stationary while generating the final visualization.  However, I
+included controls to move it around as that can be very helpful while debugging and adjusting how
+things are rendered.  The controls are similar to those used in first-person shooter games, and are
+as follows:
 
-- **Right-click:** Toggle mouselook / mouse capture.  By default, mouselook starts disabled to avoid accidentally moving the camera while exporting a video.
-- **Mouse movement:** When mouselook is enabled, controls the pan (or yaw) and pitch angles of the camera.  The roll angle is not currently controllable (the camera's up vector is locked to the global +y axis).
+- **Right-click:** Toggle mouselook / mouse capture.  By default, mouselook starts disabled to avoid
+  accidentally moving the camera while exporting a video.
+- **Mouse movement:** When mouselook is enabled, controls the pan (or yaw) and pitch angles of the
+  camera.  The roll angle is not currently controllable (the camera's up vector is locked to the
+  global +y axis).
 - **[W]:** Move forward (within the current x/z-plane).
 - **[S]:** Move backward (within the current x/z-plane).
 - **[A]:** Slide left (within the current x/z-plane).
@@ -154,18 +161,19 @@ The camera is intended to remain stationary while generating the final visualiza
 - ### Video export x-resolution must be a multilpe of 64
 
   When copying data out of a texture to a buffer, WGPU requires that the data for each row be
-  aligned to COPY_BYTES_PER_ROW_ALIGNMENT, which is currently defined to be 256.  With 4 bytes of
-  information per pixel, this means that the x resolution must be a multiple of 64 to avoid needing
-  any padding.  Most current standard video resolutions do have an x-resolution that is a muliple of
-  64, so it doesn't seem like that restriction is very limiting.  As such, I have not considered it
-  enough of a priority to write the code needed to approrpiately pad the off-screen buffer size and
-  remove the padding at the end of each row when copying data out of the off-screen buffer and
-  piping it to ffmpeg.  Instead, I just assume that no padding is necessary and explian that
-  requiement in the comments in the default config file.
+  aligned to wgpu::COPY_BYTES_PER_ROW_ALIGNMENT, which is currently defined to be 256.  With 4 bytes
+  of information per pixel, this means that the x resolution must be a multiple of 64 to avoid
+  needing any padding.  Most current standard video resolutions do have an x-resolution that is a
+  muliple of 64, so it doesn't seem like that restriction is very limiting.  As such, I have not
+  considered it enough of a priority to write the code needed to appropriately pad the off-screen
+  buffer size and remove the padding at the end of each row when copying data out of the off-screen
+  buffer and piping it to ffmpeg.  Instead, I just assume that no padding is necessary and explian
+  that requiement in the comments in the default config file.
 
 ## Petal textures
 
-I created the [PetalsArranged.png](res/PetalsArranged.png) texture included in this repository by:
+I created the [PetalsArranged.png](falling_petals/res/PetalsArranged.png) texture included in this
+repository by:
 
 - Taking images of actual marigold petals against a dark background.
 - Using the Fuzzy Select tool in [GIMP](https://www.gimp.org/) to remove the background.
