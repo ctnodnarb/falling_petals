@@ -31,8 +31,9 @@ unsafe fn vec_as_u8_slice<T: Sized>(array: &Vec<T>) -> &[u8] {
     )
 }
 
-/// Index list that defines the tesselation of the 3x3 grid of vertices used to
-/// render each petal.  In this case, all triangles share the center vertex.
+/// Index list that defines the tesselation of the 3x3 grid of vertices used to render each petal.
+/// In this case, all triangles share the center vertex (it creates fan of 8 triangles around the
+/// center vertex).
 const TEXTURED_SQUARE_INDICES: &[u16; 24] = &[
     0, 4, 1, //
     1, 4, 2, //
@@ -50,9 +51,6 @@ enum RenderTarget<'a> {
 }
 
 pub struct GraphicsState {
-    // TODO: Go through all the members of this struct and determine if they all actually need to be
-    // public.  Make them private where appropriate.
-
     // GPU handles ---------------------------------------------------------------------------------
     /// Handle to the GPU device
     pub device: wgpu::Device,
@@ -159,6 +157,7 @@ impl GraphicsState {
             // ends up using up 16 bytes (the minimum uniform buffer array stride), we can only fit
             // indices fo 4096 petals in a uniform buffer with the default limits.
             // ACTUALLY, looks like requesting more than 65536 causes it to fail to obtain a device.
+            // Looks like that is the hard limit for my GPU.
             //max_uniform_buffer_binding_size: 4 * 65536,
             ..wgpu::Limits::default()
         };
@@ -167,7 +166,6 @@ impl GraphicsState {
                 features: wgpu::Features::TEXTURE_BINDING_ARRAY
                     | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
                     | wgpu::Features::BUFFER_BINDING_ARRAY,
-                //features: wgpu::Features::empty(),
                 limits,
                 label: None,
             },
@@ -316,17 +314,15 @@ impl GraphicsState {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Petal variant index buffer"),
                 contents: unsafe { vec_as_u8_slice(&petal_variant_index_data) },
-                // TODO: Do I need COPY_DST for buffers if I'm not going to write to them again
-                // after the initial initialization?
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
         let petal_variant_data = petal_variants;
         let petal_variant_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Petal variant buffer"),
             contents: unsafe { vec_as_u8_slice(&petal_variant_data) },
-            // TODO: Do I need COPY_DST for buffers if I'm not going to write to them again after
-            // the initial initialization?
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            // COPY_DST is not needed here because this buffer never gets written to again after its
+            // first initialization.
+            usage: wgpu::BufferUsages::UNIFORM,
         });
 
         // -----------------------------------------------------------------------------------------
@@ -361,7 +357,7 @@ impl GraphicsState {
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
-                        count: None, //core::num::NonZeroU32::new(petal_variant_data.len() as u32),
+                        count: None,
                     },
                     // Entry at binding 3 for the variant indices for each petal
                     wgpu::BindGroupLayoutEntry {
@@ -372,7 +368,7 @@ impl GraphicsState {
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
-                        count: None, //core::num::NonZeroU32::new(petal_poses.len() as u32),
+                        count: None,
                     },
                 ],
                 label: Some("texture_bind_group_layout"),
@@ -414,7 +410,6 @@ impl GraphicsState {
         log::debug!("Render pipeline setup");
         let shader_source_str = include_str!("graphics/shader.wgsl")
             .replace("N_PETAL_VARIANTS", &petal_variant_data.len().to_string())
-            .replace("N_PETALS", &petal_states.len().to_string())
             .replace(
                 "N_VEC4_OF_PETAL_INDICES",
                 &((petal_states.len() + 3) / 4).to_string(),
@@ -639,7 +634,7 @@ impl GraphicsState {
             topology: wgpu::PrimitiveTopology::TriangleList,
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
-            cull_mode: None, // Disable culling for petal rendering
+            cull_mode: None, // Disable culling for petal rendering so we can see front and back
             //cull_mode: Some(wgpu::Face::Back),
             unclipped_depth: false,
             polygon_mode: wgpu::PolygonMode::Fill,
@@ -709,9 +704,19 @@ impl GraphicsState {
                         buffer: &video_export_state.video_buffer,
                         layout: wgpu::ImageDataLayout {
                             offset: 0,
-                            // TODO: looks like bytes_per_row must be padded to a multiple of
-                            // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT, which is 256.  But apparently this is
-                            // still working even though I'm not ensuring that.
+                            // TODO: bytes_per_row must be padded to a multiple of
+                            // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT, which is 256.  But most modern
+                            // standard video resolutions have x resolutions that are multiples of
+                            // 64, which satisfies that alignment without any need for padding,
+                            // assuming 4 bytes are used per pixel.  It's simpler to assume we're
+                            // using one of those resolutions where no padding is needed, since that
+                            // also means we don't have to remove the padding from the end of each
+                            // row of pixel data before piping the data to ffmpeg (see the "capture"
+                            // example in the wgpu repository for an example of how to do that:
+                            // https://github.com/gfx-rs/wgpu/tree/master/wgpu/examples/capture).
+                            // Thus, for now I'm just making a note in the default configuration
+                            // that the x resolution must be a multiple of 64, because otherwise it
+                            // will cause a crash for violating COPY_BYTES_PER_ROW_ALIGNMENT.
                             bytes_per_row: Some(
                                 std::num::NonZeroU32::new(
                                     video_export_state.video_config.width
@@ -1000,28 +1005,3 @@ fn video_thread_fn(
     log::debug!("ffmpeg finished! Output: {:?}", ffmpeg_output);
     Ok(())
 }
-
-// From the wgpu closure example... but it seems like things are working without me making sure that
-// the buffer is properly aligned?
-//struct BufferDimensions {
-//    width: usize,
-//    height: usize,
-//    unpadded_bytes_per_row: usize,
-//    padded_bytes_per_row: usize,
-//}
-//
-//impl BufferDimensions {
-//    fn new(width: usize, height: usize) -> Self {
-//        let bytes_per_pixel = std::mem::size_of::<u32>();
-//        let unpadded_bytes_per_row = width * bytes_per_pixel;
-//        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize;
-//        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
-//        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
-//        Self {
-//            width,
-//            height,
-//            unpadded_bytes_per_row,
-//            padded_bytes_per_row,
-//        }
-//    }
-//}

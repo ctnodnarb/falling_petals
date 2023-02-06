@@ -32,18 +32,17 @@ impl VertexBufferEntry for Matrix4 {
     fn vertex_buffer_layout<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Matrix4>() as wgpu::BufferAddress,
-            // TODO: Are there times when I would want the step mode to be Vertex instead of
-            // Instance for Matrix4s?  If so, how can I make this configurable?
+            // TODO: May want to make the step mode configurable in the future.
             // Tell the shader to only switch to use the next Matrix4 when the shader starts
             // processing a new instance.
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
-                    // TODO: I probably need a way to configure the shader locations more
-                    // dynamically as well, instead of having it hard-coded for this type.  E.g. so
-                    // multiple shaders in different locations can all use the Matrix4 type in
-                    // different buffers.
+                    // TODO: It would probably be good to have a way to configure the shader
+                    // locations more dynamically, instead of having it hard-coded for this type.
+                    // E.g. so multiple shaders in different locations can all use the Matrix4 type
+                    // in different buffers.
                     shader_location: 5,
                     format: wgpu::VertexFormat::Float32x4,
                 },
@@ -81,7 +80,7 @@ impl From<cgmath::Matrix4<f32>> for Matrix4 {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)] //, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug)]
 pub struct PositionTextureVertex {
     /// 3d position of the vertex
     pub position: [f32; 3],
@@ -121,7 +120,7 @@ impl VertexBufferEntry for PositionTextureVertex {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)] //, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug)]
 pub struct PositionColorVertex {
     /// 3d position of the vertex
     pub position: [f32; 3],
@@ -156,13 +155,6 @@ impl VertexBufferEntry for PositionColorVertex {
     }
 }
 
-// TODO:  It turns out I don't need this struct for the purpose I originally intended, whihc was to
-// use the index value to index into a texture array in order to vary the texture for each instance
-// of the object.  The problem is that the vertex data (e.g. 4 vertices to draw a square) is the
-// same for every instance that I render, so I can't actually use it to vary the texture on an
-// instance-by-instance basis (but rather only on a vertex-by-vertex basis).  Instead, I need to
-// figure out a way to send instance-by-instance indices (perhaps along with the
-// instance-by-instance pose matrices) to the shaders.
 #[repr(C)]
 #[derive(Copy, Clone, Debug)] //, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PositionTextureIndexVertex {
@@ -170,7 +162,7 @@ pub struct PositionTextureIndexVertex {
     pub position: [f32; 3],
     /// 2d texture coordinates at the vertex
     pub texture_coords: [f32; 2],
-    /// Index associated with the vertex (e.g. to index a texture array)
+    /// Index value associated with the vertex
     pub index: u32,
 }
 
@@ -214,7 +206,7 @@ impl VertexBufferEntry for PositionTextureIndexVertex {
 /// Struct to store Vector4 values in a format that is compatible with being put in buffers sent to
 /// the GPU.
 #[repr(C)]
-#[derive(Debug, Copy, Clone)] //, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone)]
 pub struct Vector4 {
     pub vector: [f32; 4],
 }
@@ -243,7 +235,7 @@ impl From<cgmath::Vector4<f32>> for Vector4 {
 
 /// Struct used to put u32 values into uniform buffers passed into shaders.
 #[repr(C)]
-#[derive(Debug, Copy, Clone)] //, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone)]
 pub struct UniformU32 {
     pub value: u32,
     /// Needed to give this struct the minimum 16-byte alignment required by uniform buffers.
@@ -282,7 +274,7 @@ impl From<u32> for UniformU32 {
 /// the texture to use when rendering a particular petal.  This allows me to pick between multiple
 /// textures and slice out individual petals from textures that contain multiple images of petals.
 #[repr(C)]
-#[derive(Debug, Copy, Clone)] //, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone)]
 pub struct PetalVariant {
     pub petal_texture_index: UniformU32,
     pub texture_u_v_width_height: Vector4,

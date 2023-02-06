@@ -156,7 +156,7 @@ impl FallingPetalsState {
             .sort_unstable_by(|a, b| a.pose.position[2].partial_cmp(&b.pose.position[2]).unwrap());
 
         // -----------------------------------------------------------------------------------------
-        log::debug!("Noise generator setup");
+        //log::debug!("Noise generator setup");
         //let noise_generator = noise::Perlin::default().set_seed(rng.gen()); //noise::Fbm::<noise::OpenSimplex>::default().set_seed(rng.gen());
 
         // -----------------------------------------------------------------------------------------
@@ -446,8 +446,11 @@ impl From<&Pose> for crate::graphics::gpu_types::Matrix4 {
         crate::graphics::gpu_types::Matrix4 {
             matrix: (cgmath::Matrix4::from_translation(pose.position)
                 * cgmath::Matrix4::from(pose.orientation)
-                //* cgmath::Matrix4::from_scale(pose.scale)
-                * cgmath::Matrix4::from_nonuniform_scale(pose.scale * pose.aspect_ratio, pose.scale, pose.scale))
+                * cgmath::Matrix4::from_nonuniform_scale(
+                    pose.scale * pose.aspect_ratio,
+                    pose.scale,
+                    pose.scale,
+                ))
             .into(),
         }
     }

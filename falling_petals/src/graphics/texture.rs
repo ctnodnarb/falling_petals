@@ -81,9 +81,6 @@ impl Texture {
         img: &image::DynamicImage,
         label: Option<&str>,
     ) -> Result<Self> {
-        // TODO: It would probably be good to use 16 or 32 bit color instead of rgba8.  Making this
-        // change will likely require similar changes in the structures / buffers / uniforms
-        // definitions in the shader code and shader definition / setup code.
         let rgba_image = img.to_rgba8();
         let dimensions = img.dimensions();
         let size = wgpu::Extent3d {
@@ -193,28 +190,4 @@ impl Texture {
             sampler_label,
         }
     }
-
-    //pub fn from_mandelbrot(device: &wgpu::Device, queue: &wgpu::Queue, size: u32, label: &str) -> Self {
-    //    let texels = Self::generate_mandelbrot_texels(size as usize);
-    //    todo!("Dont think the below will work since it is in R8uint format");
-    //    Self::from_bytes(device, queue, &texels[..], label).unwrap()
-    //}
-
-    //fn generate_mandelbrot_texels(size: usize) -> Vec<u8> {
-    //    (0..size * size)
-    //        .map(|id| {
-    //            // get high five for recognizing this ;)
-    //            let cx = 3.0 * (id % size) as f32 / (size - 1) as f32 - 2.0;
-    //            let cy = 2.0 * (id / size) as f32 / (size - 1) as f32 - 1.0;
-    //            let (mut x, mut y, mut count) = (cx, cy, 0);
-    //            while count < 0xFF && x * x + y * y < 4.0 {
-    //                let old_x = x;
-    //                x = x * x - y * y + cx;
-    //                y = 2.0 * old_x * y + cy;
-    //                count += 1;
-    //            }
-    //            count
-    //        })
-    //        .collect()
-    //}
 }

@@ -1,6 +1,5 @@
 use cgmath::prelude::*;
 
-// TODO: If I move the UprightPerspectiveCamera out of thi
 /// Trait for objects that can be used as a camera.  Defines a method that returns a view-projection
 /// matrix.
 pub trait Camera {
@@ -20,11 +19,6 @@ pub const CGMATH_NDC_TO_WGPU_NDC_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4:
     0.0, 0.0, 0.5, 1.0, // col 4 -- Translate [-0.5, 0.5] to [0, 1] along the z-axis.
 );
 
-// TODO: The actual UprightPerspectiveCamera struct is more of a game object than a graphics object,
-// so I should probably move this into the game module instead of here?  However, the camera trait
-// above is appropriate here since it has to do with transforming the game object to a GPU
-// compatible representation.  The counterargument might be that it would be nice to have several
-// types of cameras implemented in a graphics library so we can choose which to use.
 /// Represents a camera that can turn side to side and look up and down, but cannot roll.  With zero
 /// rotation, the camera points along the -z axis with the x axis pointing to the right and the y
 /// axis pointing up.
@@ -66,7 +60,6 @@ impl Default for UprightPerspectiveCamera {
     }
 }
 
-// TODO: If the definition of this above is moved to the game module, this should go with it.
 impl UprightPerspectiveCamera {
     pub fn new(
         location: cgmath::Point3<f32>,
@@ -111,9 +104,6 @@ impl UprightPerspectiveCamera {
     }
 }
 
-// TODO: If this struct is moved to the game module, this should probably be moved with it.  The
-// trait is more generic for any type of graphics, the specific behavior of the camera is more
-// specific for this particular game.
 impl Camera for UprightPerspectiveCamera {
     /// Construct a matrix representing the multiplication of the projection and view matrices.
     fn get_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {

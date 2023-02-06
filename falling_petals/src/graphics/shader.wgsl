@@ -1,5 +1,5 @@
 
-// Interface matching (passing inputs and outpus between the CPU and the different shaders):
+// Interface matching notes (passing inputs and outputs between the CPU and the different shaders):
 //   - Each interface is considered valid as long as the set of inputs consumed by the next stage is
 //      a subset of the set of outputs produced by the last stage. (See
 //      https://github.com/gpuweb/gpuweb/issues/644.)
@@ -77,7 +77,7 @@ struct Matrix4Uniform {
 // Define uniforms passed in through the bind group.  Note that shaders that do not access these 
 // uniform variables should not need the bind group with them to be present (I think).  If I
 // understand correctly, these bindings will only apply to shaders where the variable with that
-// specified binding is used (anywhere in the shader's function heirarchy).
+// specified binding is used (anywhere in the shader's function hierarchy).
 @group(0) @binding(0)
 var<uniform> color_pipeline_camera: Matrix4Uniform;
 @group(1) @binding(0)
@@ -87,7 +87,6 @@ var<uniform> texture_pipeline_camera: Matrix4Uniform;
 fn vs_colored_vertex(vertex_in: PositionColorVertexInput) -> PositionColorVertexOutput {
     var out: PositionColorVertexOutput;
     out.clip_position = color_pipeline_camera.matrix4 * vec4(vertex_in.position, 1.0);
-    //out.clip_position = vec4(vertex_in.position, 1.0);
     out.color = vertex_in.color;
     return out;
 }
@@ -163,6 +162,8 @@ fn fs_colored_vertex(fragment_in: PositionColorFragmentInput) -> @location(0) ve
 //struct UniformU32{
 //    @size(16) value: u32,
 //};
+// Note:  N_VEC4_OF_PETAL_INDICES gets textually replaced with the appropriate value when the shader
+// code is loaded, and before the shader gets compiled.
 struct PetalVariantIndexArray{
     petal_variant_indices: array<vec4<u32>, N_VEC4_OF_PETAL_INDICES>,
 }
@@ -177,6 +178,8 @@ struct PetalVariant {
     petal_texture_index: u32,
     texture_u_v_width_height: vec4<f32>,
 };
+// Note:  N_PETAL_VARIANTS gets textually replaced with the appropriate value when the shader code
+// is loaded, and before the shader gets compiled.
 struct PetalVariantArray {
     petal_variants: array<PetalVariant, N_PETAL_VARIANTS>,
 }
@@ -184,7 +187,7 @@ struct PetalVariantArray {
 // Define uniforms passed in through the bind group.  Note that shaders that do not access these 
 // uniform variables should not need the bind group with them to be present (I think).  If I
 // understand correctly, these bindings will only apply to shaders where the variable with that
-// specified binding is used (anywhere in the shader's function heirarchy).
+// specified binding is used (anywhere in the shader's function hierarchy).
 @group(0) @binding(0)
 var texture_pipeline_petal_textures: binding_array<texture_2d<f32>>;
 @group(0) @binding(1)
@@ -210,7 +213,7 @@ fn fs_textured_vertex(in: PositionTextureIndexFragmentInput) -> @location(0) vec
             tex_bounds[1] + in.texture_coords[1] * tex_bounds[3],
         )
     );
-    // Fade pixels out as they approach eithet the near or far clipping planes.
+    // Fade pixels out as they approach either the near or far clipping planes.
     if in.screen_position[2] < 0.4 {
         let alpha = max(0.0, in.screen_position[2] / 0.4);
         texture_sample = texture_sample * alpha;

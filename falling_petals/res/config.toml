@@ -16,8 +16,9 @@ max_scale = 2.0
 #Scale factor for petal bend offsets (applied to all offsets).
 petal_bend_vertex_offset_multiplier = 0.1
 # Petal bend offsets for each of the 9 vertices used to render the petals, listed in row-major
-# order (top-left vertex first, top-middle second, and so forth).
-petal_bend_vertex_offsets = [1.0, 0.2, -0.6, -0.1, 0.0, -0.2, -1.0, 0.3, 0.7]
+# order (top-left vertex first, top-middle second, and so forth).  The default values give each
+# petal a slight pringle or saddle like shape.
+petal_bend_vertex_offsets = [0.0, 1.0, 0.0, -1.0, 0.0, -1.0, 0.0, 1.0, 0.0]
 
 # --- Live rendering parameters --------------------------------------------------------------------
 
@@ -117,7 +118,13 @@ video_export_file = "falling_petals.mp4"
 # of the petal motion, you'll need to adjust all the petal movement parameters to counteract that
 # doubling in playback speed.
 video_export_fps = 60
-# Resolution of the exported video.
+# Resolution of the exported video.  Currently, video_export_width must be a multiple of 64 in order
+# to respect WGPU's 256-byte row-alignment requirment (see COPY_BYTES_PER_ROW_ALIGNMENT) when
+# copying pixel data out of the off-screen buffer.  That restriction could be removed with code that
+# appropriately includes extra space for padding when creating the off-screen buffer, and then
+# removes the padding from each row of data before piping the frame data to ffmpeg.  But since most
+# modern standard resolutions are multiples of 64, I haven't considered it worth the effort to do.
+# Thus, video_export_width values that are not multiples of 64 will cause a crash.
 video_export_width = 1920
 video_export_height = 1080
 
